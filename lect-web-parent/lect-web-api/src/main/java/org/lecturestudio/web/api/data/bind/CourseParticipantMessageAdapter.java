@@ -49,6 +49,7 @@ public class CourseParticipantMessageAdapter implements JsonbAdapter<CourseParti
 		message.setConnected(jsonObject.getBoolean("connected"));
 		message.setFirstName(jsonObject.getString("firstName"));
 		message.setFamilyName(jsonObject.getString("familyName"));
+		message.setRoleName(jsonObject.getString("roleName"));
 		message.setUsername(jsonObject.getString("username"));
 
 		return message;

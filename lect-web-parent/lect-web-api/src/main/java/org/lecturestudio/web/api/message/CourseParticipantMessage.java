@@ -28,6 +28,7 @@ public class CourseParticipantMessage {
 
 	private String firstName, familyName;
 	private String username;
+	private String roleName;
 
 	private boolean connected;
 
@@ -68,6 +69,10 @@ public class CourseParticipantMessage {
 		return familyName;
 	}
 
+	public String getRoleName(){
+		return roleName;
+	}
+
 	public void setFirstName(String firstName) {
 		this.firstName = firstName;
 	}
@@ -75,4 +80,9 @@ public class CourseParticipantMessage {
 	public void setFamilyName(String familyName) {
 		this.familyName = familyName;
 	}
+
+	public void setRoleName(String roleName){
+		this.roleName = roleName;
+	}
+	
 }

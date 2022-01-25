@@ -74,7 +74,7 @@ public class GeneralSettingsPresenter extends Presenter<GeneralSettingsView> {
 							config.getApplicationName()));
 		}
 	}
-//this is a test comment
+
 	private void reset() {
 		Configuration config = context.getConfiguration();
 		DefaultConfiguration defaultConfig = new DefaultConfiguration();

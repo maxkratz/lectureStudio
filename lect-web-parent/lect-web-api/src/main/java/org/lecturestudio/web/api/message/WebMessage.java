@@ -28,6 +28,8 @@ public abstract class WebMessage {
 
 	private String familyName;
 
+	private String roleName;
+
 	private String remoteAddress;
 
 	private ZonedDateTime date;
@@ -47,6 +49,14 @@ public abstract class WebMessage {
 
 	public void setFamilyName(String familyName) {
 		this.familyName = familyName;
+	}
+
+	public void setRoleName(String roleName){
+		this.roleName = roleName;
+	}
+
+	public String getRoleName(){
+		return requireNonNullElse(roleName, "");
 	}
 
 	/**

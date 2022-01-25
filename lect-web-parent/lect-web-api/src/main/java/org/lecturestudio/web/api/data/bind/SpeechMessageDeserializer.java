@@ -47,6 +47,7 @@ public class SpeechMessageDeserializer implements JsonbDeserializer<SpeechBaseMe
 			message.setDate(ZonedDateTime.parse(jsonObj.getString("time")));
 			message.setFirstName(jsonObj.getString("firstName"));
 			message.setFamilyName(jsonObj.getString("familyName"));
+			message.setRoleName(jsonObj.getString("roleName"));
 
 			return message;
 		}

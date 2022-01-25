@@ -170,8 +170,12 @@ public class SwingToolbarView extends JPanel implements ToolbarView {
 
 		this.resourceBundle = resourceBundle;
 		this.toolController = toolController;
-
-		setLayout(new WrapFlowLayout(FlowLayout.LEFT, 0, 0));
+        if(User.permissionLaserPointer() == false) {
+			pointerButton.setEnabled(false);
+		}
+		else {
+			setLayout(new WrapFlowLayout(FlowLayout.LEFT, 0, 0));
+		}
 	}
 
 	@Override

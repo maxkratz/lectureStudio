@@ -49,7 +49,7 @@ public class MessengerMessage extends WebMessage {
 	 * @param message the message to set
 	 */
 	public void setMessage(Message message) {
-		this.message = message;
+			this.message = message;
 	}
 
 	@Override

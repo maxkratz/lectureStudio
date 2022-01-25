@@ -317,7 +317,10 @@ public class ToolController extends Controller implements ToolContext {
 	 * Select the pointer tool.
 	 */
 	public void selectPointerTool() {
-		setTool(new PointerTool(this));
+		if(User.permissionLaserPointer == true) {
+			setTool(new PointerTool(this));
+		}
+		else System.out.print("Error, the laser pointer is not avalaible for the user");
 	}
 
 	/**
