@@ -33,7 +33,7 @@ public class WrapFlowLayout extends FlowLayout {
 
 	
 	public WrapFlowLayout() {
-		super();
+		this(FlowLayout.LEFT);
 	}
 
 	public WrapFlowLayout(int align) {

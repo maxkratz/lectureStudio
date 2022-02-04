@@ -33,6 +33,7 @@ import org.apache.logging.log4j.Logger;
 
 import org.lecturestudio.core.geometry.Point2D;
 import org.lecturestudio.core.net.MediaType;
+import org.lecturestudio.web.api.model.ScreenSource;
 
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver;
 import dev.onvoid.webrtc.PeerConnectionObserver;
@@ -65,6 +66,10 @@ import dev.onvoid.webrtc.media.video.VideoDevice;
 import dev.onvoid.webrtc.media.video.VideoDeviceSource;
 import dev.onvoid.webrtc.media.video.VideoFrame;
 import dev.onvoid.webrtc.media.video.VideoTrack;
+import dev.onvoid.webrtc.media.video.desktop.DesktopCapturer;
+import dev.onvoid.webrtc.media.video.desktop.DesktopSource;
+import dev.onvoid.webrtc.media.video.desktop.ScreenCapturer;
+import dev.onvoid.webrtc.media.video.desktop.WindowCapturer;
 
 public class JanusPeerConnection implements PeerConnectionObserver {
 
@@ -92,6 +97,8 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 	private VideoDeviceSource cameraSource;
 
 	private VideoDevice cameraDevice;
+
+	private ScreenSource screenSource;
 
 	private VideoCaptureCapability cameraCapability;
 
@@ -287,10 +294,12 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 	}
 
 	public void setup(RTCRtpTransceiverDirection audio,
-			RTCRtpTransceiverDirection video) {
+			RTCRtpTransceiverDirection video,
+			RTCRtpTransceiverDirection screen) {
 		execute(() -> {
 			addAudio(audio);
 			addVideo(video);
+			addScreenVideo(screen);
 			addDataChannel();
 
 			createOffer();
@@ -350,6 +359,39 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 		});
 	}
 
+	public void setScreenShareEnabled(boolean enable) {
+		execute(() -> {
+			RTCRtpTransceiverDirection direction = enable ?
+					RTCRtpTransceiverDirection.SEND_ONLY :
+					RTCRtpTransceiverDirection.INACTIVE;
+
+			if (enable) {
+				if (nonNull(desktopSource)) {
+					try {
+						desktopSource.start();
+					}
+					catch (Throwable e) {
+						notify(onException, new JanusPeerConnectionMediaException(
+								MediaType.Screen, "Start screen capture source failed", e));
+						return;
+					}
+				}
+				else {
+					addScreenVideo(direction);
+					return;
+				}
+			}
+			else {
+				if (nonNull(desktopSource)) {
+					desktopSource.stop();
+				}
+			}
+
+			setTransceiverDirection(direction, MediaStreamTrack.VIDEO_TRACK_KIND);
+			setSenderTrackEnabled(MediaStreamTrack.VIDEO_TRACK_KIND, enable);
+		});
+	}
+
 	public void setCameraDevice(VideoDevice device) {
 		Objects.requireNonNull(device);
 
@@ -397,6 +439,30 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 								MediaType.Camera, "Start video capture source failed", e));
 					}
 				}
+			}
+		}
+	}
+
+	public void setScreenSource(ScreenSource source) {
+		if (Objects.equals(screenSource, source)) {
+			return;
+		}
+
+		this.screenSource = source;
+
+		if (nonNull(source) && nonNull(desktopSource)) {
+			try {
+				DesktopCapturer screenCapturer = screenSource.isWindow() ?
+						new WindowCapturer() :
+						new ScreenCapturer();
+				screenCapturer.selectSource(new DesktopSource(
+						screenSource.getTitle(), screenSource.getId()));
+
+				desktopSource.setDesktopCapturer(screenCapturer);
+			}
+			catch (Throwable e) {
+				notify(onException, new JanusPeerConnectionMediaException(
+						MediaType.Screen, "Set screen source failed", e));
 			}
 		}
 	}
@@ -454,6 +520,46 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 
 			notify(onException, new JanusPeerConnectionMediaException(
 					MediaType.Camera, "Start video capture source failed", e));
+			return;
+		}
+
+		peerConnection.addTrack(videoTrack, List.of("stream"));
+
+		setTransceiverDirection(direction, MediaStreamTrack.VIDEO_TRACK_KIND);
+	}
+
+	private void addScreenVideo(RTCRtpTransceiverDirection direction) {
+		if (!sendMedia(direction)) {
+			return;
+		}
+
+		desktopSource = new VideoDesktopSource();
+
+		if (nonNull(screenSource)) {
+			LOGGER.debug("Screen source: " + screenSource.getTitle());
+
+			DesktopCapturer screenCapturer = screenSource.isWindow() ?
+					new WindowCapturer() :
+					new ScreenCapturer();
+			screenCapturer.selectSource(new DesktopSource(
+					screenSource.getTitle(), screenSource.getId()));
+
+			desktopSource.setDesktopCapturer(screenCapturer);
+			desktopSource.setFrameRate(15);
+		}
+
+		VideoTrack videoTrack = factory.getFactory().createVideoTrack("screenTrack",
+				desktopSource);
+
+		try {
+			desktopSource.start();
+		}
+		catch (Throwable e) {
+			desktopSource.dispose();
+			desktopSource = null;
+
+			notify(onException, new JanusPeerConnectionMediaException(
+					MediaType.Screen, "Start screen capture source failed", e));
 			return;
 		}
 

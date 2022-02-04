@@ -49,6 +49,7 @@ import org.lecturestudio.presenter.api.config.StreamConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.presenter.api.event.CameraStateEvent;
 import org.lecturestudio.presenter.api.event.StreamingStateEvent;
+import org.lecturestudio.presenter.api.model.SharedScreenSource;
 import org.lecturestudio.presenter.api.presenter.ReconnectStreamPresenter;
 import org.lecturestudio.web.api.client.ClientFailover;
 import org.lecturestudio.web.api.client.TokenProvider;
@@ -59,6 +60,7 @@ import org.lecturestudio.web.api.janus.JanusPeerConnectionMediaException;
 import org.lecturestudio.web.api.janus.JanusStateHandlerListener;
 import org.lecturestudio.web.api.janus.client.JanusWebSocketClient;
 import org.lecturestudio.web.api.message.SpeechRequestMessage;
+import org.lecturestudio.web.api.model.ScreenSource;
 import org.lecturestudio.web.api.service.ServiceParameters;
 import org.lecturestudio.web.api.stream.client.StreamWebSocketClient;
 import org.lecturestudio.web.api.stream.StreamContext;
@@ -118,6 +120,8 @@ public class WebRtcStreamService extends ExecutableBase {
 
 	private ExecutableState cameraState;
 
+	private ExecutableState screenShareState;
+
 
 	@Inject
 	public WebRtcStreamService(ApplicationContext context,
@@ -158,7 +162,7 @@ public class WebRtcStreamService extends ExecutableBase {
 			return;
 		}
 
-		streamProviderService.rejectSpeechRequest(message.getRequestId());
+		speechRequestRejected(message.getRequestId());
 	}
 
 	public void startCameraStream() throws ExecutableException {
@@ -186,6 +190,34 @@ public class WebRtcStreamService extends ExecutableBase {
 		setCameraState(ExecutableState.Stopped);
 	}
 
+	public void startScreenShare(SharedScreenSource screenSource)
+			throws ExecutableException {
+		if (streamState != ExecutableState.Started
+				|| screenShareState == ExecutableState.Started) {
+			return;
+		}
+
+		setScreenShareState(ExecutableState.Starting);
+
+		streamContext.getScreenContext().setScreenSource(
+				new ScreenSource(screenSource.getTitle(), screenSource.getId(),
+						screenSource.isWindow()));
+
+		setScreenShareState(ExecutableState.Started);
+	}
+
+	public void stopScreenShare() throws ExecutableException {
+		if (screenShareState != ExecutableState.Started) {
+			return;
+		}
+
+		setScreenShareState(ExecutableState.Stopping);
+
+		streamContext.getScreenContext().setScreenSource(null);
+
+		setScreenShareState(ExecutableState.Stopped);
+	}
+
 	public void mutePeerAudio(boolean mute) {
 		if (!started()) {
 			return;
@@ -207,7 +239,8 @@ public class WebRtcStreamService extends ExecutableBase {
 			return;
 		}
 
-		streamProviderService.rejectSpeechRequest(requestId);
+		speechRequestRejected(requestId);
+
 		janusClient.stopRemoteSpeech(requestId);
 	}
 
@@ -247,6 +280,7 @@ public class WebRtcStreamService extends ExecutableBase {
 		streamContext = createStreamContext(course, config);
 		streamStateClient = createStreamStateClient(course, config);
 		janusClient = createJanusClient(streamContext);
+		janusClient.setRejectedConsumer(this::speechRequestRejected);
 		janusClient.setJanusStateHandlerListener(new JanusStateHandlerListener() {
 
 			@Override
@@ -377,6 +411,10 @@ public class WebRtcStreamService extends ExecutableBase {
 		eventRecorder.destroy();
 	}
 
+	private void speechRequestRejected(Long requestId) {
+		streamProviderService.rejectSpeechRequest(requestId);
+	}
+
 	/**
 	 * Searches the provided list for a device with the provided name.
 	 *
@@ -413,6 +451,17 @@ public class WebRtcStreamService extends ExecutableBase {
 		this.cameraState = state;
 
 		context.getEventBus().post(new CameraStateEvent(cameraState));
+	}
+
+	/**
+	 * Sets the new screen-sharing state of this controller.
+	 *
+	 * @param state The new state.
+	 */
+	private void setScreenShareState(ExecutableState state) {
+		this.screenShareState = state;
+
+//		context.getEventBus().post(new CameraStateEvent(cameraState));
 	}
 
 	private void disposeExecutable(Executable executable) throws ExecutableException {

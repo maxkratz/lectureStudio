@@ -82,11 +82,12 @@ public class PublishToRoomState implements JanusState {
 		var videoDirection = videoContext.getSendVideo() ?
 				RTCRtpTransceiverDirection.SEND_ONLY :
 				RTCRtpTransceiverDirection.INACTIVE;
+		var screenDirection = RTCRtpTransceiverDirection.INACTIVE;
 
 		try {
 			peerConnection.setCameraCapability(videoContext.getCaptureCapability());
 			peerConnection.setCameraDevice(videoContext.getCaptureDevice());
-			peerConnection.setup(audioDirection, videoDirection);
+			peerConnection.setup(audioDirection, videoDirection, screenDirection);
 
 			// Initialize with desired mute setting.
 			peerConnection.setMicrophoneEnabled(audioContext.getSendAudio());

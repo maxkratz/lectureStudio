@@ -515,6 +515,11 @@ public class FxToolbarView extends FlowPane implements ToolbarView {
 	}
 
 	@Override
+	public void bindEnableScreenSharing(BooleanProperty enable) {
+
+	}
+
+	@Override
 	public void setOnSelectQuiz(Action action) {
 
 	}

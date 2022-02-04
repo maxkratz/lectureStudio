@@ -70,6 +70,8 @@ public class PresenterContext extends ApplicationContext {
 
 	private final BooleanProperty streamStarted = new BooleanProperty();
 
+	private final BooleanProperty screenSharingStarted = new BooleanProperty();
+
 	private final BooleanProperty hasRecordedChanges = new BooleanProperty();
 
 	private final BooleanProperty showOutline = new BooleanProperty();
@@ -181,6 +183,18 @@ public class PresenterContext extends ApplicationContext {
 
 	public BooleanProperty streamStartedProperty() {
 		return streamStarted;
+	}
+
+	public void setScreenSharingStarted(boolean started) {
+		screenSharingStarted.set(started);
+	}
+
+	public boolean getScreenSharingStarted() {
+		return screenSharingStarted.get();
+	}
+
+	public BooleanProperty screenSharingStartedProperty() {
+		return screenSharingStarted;
 	}
 
 	public void setMessengerStarted(boolean started) {
