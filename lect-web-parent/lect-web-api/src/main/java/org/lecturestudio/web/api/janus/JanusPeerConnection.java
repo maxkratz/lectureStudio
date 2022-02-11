@@ -66,10 +66,6 @@ import dev.onvoid.webrtc.media.video.VideoDevice;
 import dev.onvoid.webrtc.media.video.VideoDeviceSource;
 import dev.onvoid.webrtc.media.video.VideoFrame;
 import dev.onvoid.webrtc.media.video.VideoTrack;
-import dev.onvoid.webrtc.media.video.desktop.DesktopCapturer;
-import dev.onvoid.webrtc.media.video.desktop.DesktopSource;
-import dev.onvoid.webrtc.media.video.desktop.ScreenCapturer;
-import dev.onvoid.webrtc.media.video.desktop.WindowCapturer;
 
 public class JanusPeerConnection implements PeerConnectionObserver {
 
@@ -366,8 +362,17 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 					RTCRtpTransceiverDirection.INACTIVE;
 
 			if (enable) {
+				if (isNull(screenSource)) {
+					notify(onException, new JanusPeerConnectionMediaException(
+							MediaType.Screen, "Start screen capture source failed"));
+					return;
+				}
+
 				if (nonNull(desktopSource)) {
 					try {
+						desktopSource.setSourceId(screenSource.getId(),
+								screenSource.isWindow());
+						desktopSource.setFrameRate(30);
 						desktopSource.start();
 					}
 					catch (Throwable e) {
@@ -449,22 +454,6 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 		}
 
 		this.screenSource = source;
-
-		if (nonNull(source) && nonNull(desktopSource)) {
-			try {
-				DesktopCapturer screenCapturer = screenSource.isWindow() ?
-						new WindowCapturer() :
-						new ScreenCapturer();
-				screenCapturer.selectSource(new DesktopSource(
-						screenSource.getTitle(), screenSource.getId()));
-
-				desktopSource.setDesktopCapturer(screenCapturer);
-			}
-			catch (Throwable e) {
-				notify(onException, new JanusPeerConnectionMediaException(
-						MediaType.Screen, "Set screen source failed", e));
-			}
-		}
 	}
 
 	private void addAudio(RTCRtpTransceiverDirection direction) {
@@ -536,16 +525,9 @@ public class JanusPeerConnection implements PeerConnectionObserver {
 		desktopSource = new VideoDesktopSource();
 
 		if (nonNull(screenSource)) {
-			LOGGER.debug("Screen source: " + screenSource.getTitle());
-
-			DesktopCapturer screenCapturer = screenSource.isWindow() ?
-					new WindowCapturer() :
-					new ScreenCapturer();
-			screenCapturer.selectSource(new DesktopSource(
-					screenSource.getTitle(), screenSource.getId()));
-
-			desktopSource.setDesktopCapturer(screenCapturer);
-			desktopSource.setFrameRate(15);
+			desktopSource.setSourceId(screenSource.getId(),
+					screenSource.isWindow());
+			desktopSource.setFrameRate(30);
 		}
 
 		VideoTrack videoTrack = factory.getFactory().createVideoTrack("screenTrack",

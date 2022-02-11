@@ -127,9 +127,9 @@ public class JanusPublisherHandler extends JanusStateHandler {
 			peerConnection.setCameraCapability(newCapability);
 		};
 
-		screenSourceListener = (observable, oldSource, newSource) -> {
-			peerConnection.setScreenSource(newSource);
-			peerConnection.setScreenShareEnabled(nonNull(newSource));
+		screenSourceListener = (observable, oldValue, newValue) -> {
+			peerConnection.setScreenSource(newValue);
+			peerConnection.setScreenShareEnabled(nonNull(newValue));
 		};
 	}
 

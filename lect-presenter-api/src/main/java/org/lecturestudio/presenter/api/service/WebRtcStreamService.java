@@ -254,6 +254,7 @@ public class WebRtcStreamService extends ExecutableBase {
 	protected void initInternal() {
 		streamState = ExecutableState.Stopped;
 		cameraState = ExecutableState.Stopped;
+		screenShareState = ExecutableState.Stopped;
 	}
 
 	@Override
@@ -534,6 +535,9 @@ public class WebRtcStreamService extends ExecutableBase {
 						(int) cameraViewRect.getHeight(),
 						(int) streamConfig.getCameraFormat().getFrameRate()));
 		streamContext.getVideoContext().setBitrate(cameraConfig.getBitRate());
+
+		streamContext.getScreenContext().setScreenSource(null);
+		streamContext.getScreenContext().setFrameRate(30);
 
 		RTCIceServer iceServer = new RTCIceServer();
 		iceServer.urls.add(streamStunServers);
