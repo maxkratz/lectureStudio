@@ -18,6 +18,8 @@
 
 package org.lecturestudio.web.api.janus.state;
 
+import static java.util.Objects.nonNull;
+
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,9 +40,11 @@ import org.lecturestudio.web.api.stream.StreamContext;
 
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCIceGatheringState;
+import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCRtpTransceiverDirection;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
+import dev.onvoid.webrtc.media.MediaStreamTrack;
 
 /**
  * This state starts publishing media (audio, video and data) to a joined
@@ -136,9 +140,15 @@ public class PublishToRoomState implements JanusState {
 
 	private void sendRequest(JanusStateHandler handler, String sdp) {
 		JanusRoomPublishRequest request = new JanusRoomPublishRequest();
-		request.setAudio(true);
-		request.setVideo(true);
-		request.setData(true);
+		JanusPeerConnection peerConnection = handler.getPeerConnection();
+
+		for (RTCRtpTransceiver transceiver : peerConnection.getTransceivers()) {
+			MediaStreamTrack track = transceiver.getSender().getTrack();
+
+			if (nonNull(track)) {
+				request.addStreamDescription(transceiver.getMid(), track.getId());
+			}
+		}
 
 		publishRequest = new JanusRoomPublishMessage(handler.getSessionId(),
 				handler.getPluginId());
