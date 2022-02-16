@@ -83,10 +83,8 @@ public class PublishToRoomState implements JanusState {
 
 		// Publishers are send-only.
 		var audioDirection = RTCRtpTransceiverDirection.SEND_ONLY;
-		var videoDirection = videoContext.getSendVideo() ?
-				RTCRtpTransceiverDirection.SEND_ONLY :
-				RTCRtpTransceiverDirection.INACTIVE;
-		var screenDirection = RTCRtpTransceiverDirection.INACTIVE;
+		var videoDirection = RTCRtpTransceiverDirection.SEND_ONLY;
+		var screenDirection = RTCRtpTransceiverDirection.SEND_ONLY;
 
 		try {
 			peerConnection.setCameraCapability(videoContext.getCaptureCapability());
