@@ -286,7 +286,7 @@ public class WebRtcStreamService extends ExecutableBase {
 
 			@Override
 			public void connected() {
-
+				eventRecorder.setConnected();
 			}
 
 			@Override

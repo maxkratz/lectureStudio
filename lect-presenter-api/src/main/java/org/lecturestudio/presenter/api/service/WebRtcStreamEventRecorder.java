@@ -88,6 +88,10 @@ public class WebRtcStreamEventRecorder extends StreamEventRecorder {
 		this.documentService = documentService;
 	}
 
+	void setConnected() {
+		addPlaybackAction(new StreamStartAction(course.getId()));
+	}
+
 	public void setCourse(Course course) {
 		this.course = course;
 	}
@@ -263,8 +267,6 @@ public class WebRtcStreamEventRecorder extends StreamEventRecorder {
 			addPlaybackAction(new StreamPageSelectedAction(document.getCurrentPage()));
 
 			getPreRecordedActions().forEach(this::addPlaybackAction);
-
-			addPlaybackAction(new StreamStartAction(course.getId()));
 		}
 		catch (Exception e) {
 			throw new ExecutableException("Send action failed", e);
