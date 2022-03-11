@@ -33,7 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import javax.inject.Inject;
 import javax.inject.Named;
 
-import org.lecturestudio.broadcast.config.BroadcastProfile;
+//import org.lecturestudio.broadcast.config.BroadcastProfile;
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
@@ -915,36 +915,36 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();
 		DisplayConfiguration displayConfig = config.getDisplayConfig();
 		NetworkConfiguration netConfig = config.getNetworkConfig();
-		BroadcastProfile profile = netConfig.getBroadcastProfile();
+//		BroadcastProfile profile = netConfig.getBroadcastProfile();
+//
+//		String broadcastAddress = profile.getBroadcastAddress();
+//		Integer broadcastPort = profile.getBroadcastPort();
 
-		String broadcastAddress = profile.getBroadcastAddress();
-		Integer broadcastPort = profile.getBroadcastPort();
-
-		boolean isLocal = NetUtils.isLocalAddress(broadcastAddress, broadcastPort);
-
-		if (isLocal) {
-			// Get local address.
-			String adapter = config.getNetworkConfig().getAdapter();
-
-			if (isNull(adapter)) {
-				adapter = NetUtils.getNetworkInterfaces().get(0).getName();
-			}
-
-			try {
-				broadcastAddress = NetUtils.getHostAddress(adapter, java.net.Inet4Address.class);
-			}
-			catch (SocketException e) {
-				logException(e, "Unknown Host");
-			}
-		}
-
-		// Show only non-standard port.
-		if (broadcastPort != 80) {
-			broadcastAddress += ":" + broadcastPort;
-		}
+//		boolean isLocal = NetUtils.isLocalAddress(broadcastAddress, broadcastPort);
+//
+//		if (isLocal) {
+//			// Get local address.
+//			String adapter = config.getNetworkConfig().getAdapter();
+//
+//			if (isNull(adapter)) {
+//				adapter = NetUtils.getNetworkInterfaces().get(0).getName();
+//			}
+//
+//			try {
+//				broadcastAddress = NetUtils.getHostAddress(adapter, java.net.Inet4Address.class);
+//			}
+//			catch (SocketException e) {
+//				logException(e, "Unknown Host");
+//			}
+//		}
+//
+//		// Show only non-standard port.
+//		if (broadcastPort != 80) {
+//			broadcastAddress += ":" + broadcastPort;
+//		}
 
 		SlideViewAddressOverlay overlay = viewFactory.getInstance(SlideViewAddressOverlay.class);
-		overlay.setAddress(broadcastAddress);
+//		overlay.setAddress(broadcastAddress);
 		overlay.setPosition(displayConfig.getIpPosition());
 		overlay.setTextColor(Color.BLACK);
 		overlay.setBackgroundColor(Color.WHITE);
