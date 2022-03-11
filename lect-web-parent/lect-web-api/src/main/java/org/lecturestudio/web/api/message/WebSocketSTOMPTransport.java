@@ -3,6 +3,8 @@ package org.lecturestudio.web.api.message;
 import org.lecturestudio.core.ExecutableBase;
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.web.api.data.bind.*;
+import org.lecturestudio.web.api.net.OwnTrustManager;
+import org.lecturestudio.web.api.net.SSLContextFactory;
 import org.lecturestudio.web.api.service.ServiceParameters;
 import org.lecturestudio.web.api.stream.model.Course;
 import org.lecturestudio.web.api.websocket.WebSocketHeaderProvider;
@@ -23,7 +25,14 @@ import org.springframework.web.socket.sockjs.client.Transport;
 import javax.json.bind.Jsonb;
 import javax.json.bind.JsonbBuilder;
 import javax.json.bind.JsonbConfig;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
 import java.nio.charset.StandardCharsets;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -100,6 +109,38 @@ public class WebSocketSTOMPTransport extends ExecutableBase implements MessageTr
             StandardWebSocketClient simpleWebSocketClient = new StandardWebSocketClient();
 
             List<Transport> transports = new ArrayList();
+
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                    new X509TrustManager() {
+
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return null;
+                        }
+
+                        public void checkClientTrusted(X509Certificate[] certs,
+                                String authType) {
+                        }
+
+                        public void checkServerTrusted(X509Certificate[] certs,
+                                String authType) {
+                        }
+                    }
+            };
+
+            try {
+                SSLContext sc = SSLContext.getInstance("SSL");
+                sc.init(null, trustAllCerts, new java.security.SecureRandom());
+                HttpsURLConnection.setDefaultSSLSocketFactory(
+                        sc.getSocketFactory());
+
+                Map<String, Object> properties = new HashMap<>();
+                properties.put("org.apache.tomcat.websocket.SSL_CONTEXT", sc);
+                simpleWebSocketClient.setUserProperties(properties);
+            }
+            catch (Throwable e) {
+                throw new ExecutableException(e);
+            }
+
             transports.add(new org.springframework.web.socket.sockjs.client.WebSocketTransport(simpleWebSocketClient));
 
             WebSocketClient webSocketClient = new SockJsClient(transports);
