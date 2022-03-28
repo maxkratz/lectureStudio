@@ -24,4 +24,4 @@ jobs:
           push: false
           tags: maxkratz/lecturestudiobuilder:latest
       - name: Build lectureStudio in Docker container
-        run: docker run --rm -v $PWD:/data maxkratz/lecturestudiobuilder:latest /bin/bash -c "cd /data && mvn install -DskipTests"
+        run: docker run --rm -v $PWD:/data maxkratz/lecturestudiobuilder:latest /bin/bash -c "cd /data && mvn install -DskipTests --no-transfer-progress"
