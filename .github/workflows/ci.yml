@@ -10,7 +10,7 @@ on:
     #  - 'v*.*.*'
 
 jobs:
-  # Build Eclipse eMoflon Linux user
+  # Build lectureStudio for Linux
   build-lecturestudio-linux:
     runs-on: [ubuntu-20.04]
     steps:
@@ -25,3 +25,8 @@ jobs:
           tags: maxkratz/lecturestudiobuilder:latest
       - name: Build lectureStudio in Docker container
         run: docker run --rm -v $PWD:/data maxkratz/lecturestudiobuilder:latest /bin/bash -c "cd /data && mvn install -DskipTests --no-transfer-progress"
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: lectureStudio-build
+          path: lectureStudio-*.zip
