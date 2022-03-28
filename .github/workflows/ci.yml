@@ -11,7 +11,7 @@ on:
 
 jobs:
   # Build Eclipse eMoflon Linux user
-  build-lecturestudio:
+  build-lecturestudio-linux:
     runs-on: [ubuntu-20.04]
     steps:
       - name: Start message
