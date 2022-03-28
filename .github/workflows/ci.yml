@@ -11,7 +11,7 @@ on:
 
 jobs:
   # Build lectureStudio for Linux
-  build-lecturestudio-linux:
+  lecturestudio-build-linux:
     runs-on: [ubuntu-20.04]
     steps:
       - name: Start message
@@ -28,4 +28,5 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
+          name: lecturestudio-build-linux
           path: target/lectureStudio-*.zip
