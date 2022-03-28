@@ -19,4 +19,4 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v2
       - name: Git test
-        run: git shortlog -s -n  | awk '{ sum += $1; } END { print sum; }' "$@"
+        run: git shortlog -s -n | cat
