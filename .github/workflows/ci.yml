@@ -46,7 +46,7 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v2
       - name: Build lectureStudio
-        run: mvn install -DskipTests --no-transfer-progress
+        run: mvn install -DskipTests --no-transfer-progress -P !package:msi
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
