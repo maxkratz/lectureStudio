@@ -30,3 +30,20 @@ jobs:
         with:
           name: lecturestudio-build-linux
           path: target/lectureStudio-*.zip
+
+  # Build lectureStudio for Windows
+  lecturestudio-build-windows:
+    runs-on: [windows-2022]
+    steps:
+      - name: Install dependencies
+        run: |
+          choco install wget curl unzip zip --no-progress
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Build lectureStudio
+        run: mvn install -DskipTests --no-transfer-progress
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: lecturestudio-build-windows
+          path: target/lectureStudio-*.zip
