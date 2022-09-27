@@ -39,13 +39,14 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+      - uses: GuillaumeFalourd/setup-windows10-sdk-action@v1.7
       - name: Install dependencies
         run: |
           choco install wget curl unzip zip --no-progress
       - name: Check out repository code
         uses: actions/checkout@v2
       - name: Build lectureStudio
-        run: mvn install -DskipTests --no-transfer-progress -P !package:msi
+        run: mvn install -DskipTests --no-transfer-progress
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
