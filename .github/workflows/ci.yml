@@ -35,6 +35,10 @@ jobs:
   lecturestudio-build-windows:
     runs-on: [windows-2022]
     steps:
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
       - name: Install dependencies
         run: |
           choco install wget curl unzip zip --no-progress
