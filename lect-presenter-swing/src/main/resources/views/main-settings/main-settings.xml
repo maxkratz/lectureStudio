@@ -6,9 +6,6 @@
 	<Tab name="displays" text="settings.displays" icon="display-settings.svg, 24" size="120, 30">
 		<DisplaySettingsView />
 	</Tab>
-	<Tab name="grid" text="settings.grid" icon="grid-settings.svg, 24" size="120, 30">
-		<GridSettingsView />
-	</Tab>
 	<Tab name="tools" text="settings.tools" icon="tool-settings.svg, 24" size="120, 30">
 		<ToolSettingsView />
 	</Tab>
@@ -26,6 +23,9 @@
 	</Tab>
 	<Tab name="stream" text="settings.live.stream" icon="stream-settings.svg, 24" size="120, 30">
 		<StreamSettingsView />
+	</Tab>
+	<Tab name="templates" text="settings.templates" icon="template-settings.svg, 24" size="120, 30">
+		<DocumentTemplateSettingsView />
 	</Tab>
 <!--	<Tab name="web-service" text="settings.web.service" icon="webservice-settings.svg, 24" size="120, 30">-->
 <!--		<WebServiceSettingsView />-->

@@ -18,18 +18,22 @@
 
 package org.lecturestudio.presenter.api.service;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.media.Device;
 import dev.onvoid.webrtc.media.MediaDevices;
+import dev.onvoid.webrtc.media.audio.AudioConverter;
 import dev.onvoid.webrtc.media.audio.AudioDevice;
 import dev.onvoid.webrtc.media.video.VideoCaptureCapability;
 import dev.onvoid.webrtc.media.video.VideoDevice;
 
 import java.io.IOException;
+import java.text.MessageFormat;
 import java.util.List;
 
 import javax.inject.Inject;
-import javax.inject.Named;
 import javax.inject.Singleton;
 
 import org.lecturestudio.core.Executable;
@@ -38,6 +42,8 @@ import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.configuration.AudioConfiguration;
+import org.lecturestudio.core.audio.AudioFormat;
+import org.lecturestudio.core.audio.AudioFrame;
 import org.lecturestudio.core.beans.ChangeListener;
 import org.lecturestudio.core.codec.VideoCodecConfiguration;
 import org.lecturestudio.core.geometry.Rectangle2D;
@@ -60,6 +66,8 @@ import org.lecturestudio.web.api.janus.JanusStateHandlerListener;
 import org.lecturestudio.web.api.janus.client.JanusWebSocketClient;
 import org.lecturestudio.web.api.message.SpeechRequestMessage;
 import org.lecturestudio.web.api.service.ServiceParameters;
+import org.lecturestudio.web.api.stream.StreamAudioContext;
+import org.lecturestudio.web.api.stream.StreamVideoContext;
 import org.lecturestudio.web.api.stream.client.StreamWebSocketClient;
 import org.lecturestudio.web.api.stream.StreamContext;
 import org.lecturestudio.web.api.stream.model.Course;
@@ -82,21 +90,9 @@ public class WebRtcStreamService extends ExecutableBase {
 
 	private final ClientFailover clientFailover;
 
-	@Inject
-	@Named("stream.janus.websocket.url")
-	private String janusWebSocketUrl;
+	private final WebServiceInfo webServiceInfo;
 
-	@Inject
-	@Named("stream.state.websocket.url")
-	private String streamStateWebSocketUrl;
-
-	@Inject
-	@Named("stream.publisher.api.url")
-	private String streamPublisherApiUrl;
-
-	@Inject
-	@Named("stream.stun.servers")
-	private String streamStunServers;
+	private final RecordingService recordingService;
 
 	private StreamContext streamContext;
 
@@ -106,6 +102,8 @@ public class WebRtcStreamService extends ExecutableBase {
 
 	private JanusWebSocketClient janusClient;
 
+	private AudioFrameProcessor audioProcessor;
+
 	private ChangeListener<Rectangle2D> cameraFormatListener;
 
 	private ChangeListener<String> cameraDeviceListener;
@@ -114,6 +112,8 @@ public class WebRtcStreamService extends ExecutableBase {
 
 	private ChangeListener<String> playbackDeviceListener;
 
+	private ChangeListener<Double> playbackVolumeListener;
+
 	private ExecutableState streamState;
 
 	private ExecutableState cameraState;
@@ -121,10 +121,14 @@ public class WebRtcStreamService extends ExecutableBase {
 
 	@Inject
 	public WebRtcStreamService(ApplicationContext context,
-			WebRtcStreamEventRecorder eventRecorder)
+			WebServiceInfo webServiceInfo,
+			WebRtcStreamEventRecorder eventRecorder,
+			RecordingService recordingService)
 			throws ExecutableException {
 		this.context = context;
+		this.webServiceInfo = webServiceInfo;
 		this.eventRecorder = eventRecorder;
+		this.recordingService = recordingService;
 		this.clientFailover = new ClientFailover();
 		this.clientFailover.addStateListener((oldState, newState) -> {
 			if (newState == ExecutableState.Started) {
@@ -244,6 +248,9 @@ public class WebRtcStreamService extends ExecutableBase {
 			setCameraState(ExecutableState.Starting);
 		}
 
+		audioProcessor = new AudioFrameProcessor(config.getAudioConfig()
+				.getRecordingFormat());
+
 		streamContext = createStreamContext(course, config);
 		streamStateClient = createStreamStateClient(course, config);
 		janusClient = createJanusClient(streamContext);
@@ -297,7 +304,7 @@ public class WebRtcStreamService extends ExecutableBase {
 			throw new ExecutableException(e);
 		}
 
-		cameraFormatListener = (observable, oldValue, newValue) -> {
+		cameraFormatListener = (o, oldValue, newValue) -> {
 			streamContext.getVideoContext().setCaptureCapability(
 					new VideoCaptureCapability((int) newValue.getWidth(),
 							(int) newValue.getHeight(),
@@ -306,32 +313,36 @@ public class WebRtcStreamService extends ExecutableBase {
 			streamContext.getVideoContext().setBitrate(
 					streamConfig.getCameraCodecConfig().getBitRate());
 		};
-		cameraDeviceListener = (observable, oldValue, newValue) -> {
+		cameraDeviceListener = (o, oldValue, newValue) -> {
 			VideoDevice cameraDevice = getDeviceByName(
 					MediaDevices.getVideoCaptureDevices(),
 					streamConfig.getCameraName());
 
 			streamContext.getVideoContext().setCaptureDevice(cameraDevice);
 		};
-		captureDeviceListener = (observable, oldValue, newValue) -> {
+		captureDeviceListener = (o, oldValue, newValue) -> {
 			AudioDevice captureDevice = getDeviceByName(
 					MediaDevices.getAudioCaptureDevices(),
 					audioConfig.getCaptureDeviceName());
 
 			streamContext.getAudioContext().setRecordingDevice(captureDevice);
 		};
-		playbackDeviceListener = (observable, oldValue, newValue) -> {
+		playbackDeviceListener = (o, oldValue, newValue) -> {
 			AudioDevice playbackDevice = getDeviceByName(
 					MediaDevices.getAudioRenderDevices(),
 					audioConfig.getPlaybackDeviceName());
 
 			streamContext.getAudioContext().setPlaybackDevice(playbackDevice);
 		};
+		playbackVolumeListener = (o, oldValue, newValue) -> {
+			streamContext.getAudioContext().setPlaybackVolume(newValue);
+		};
 
 		streamConfig.getCameraCodecConfig().viewRectProperty().addListener(cameraFormatListener);
 		streamConfig.cameraNameProperty().addListener(cameraDeviceListener);
 		audioConfig.captureDeviceNameProperty().addListener(captureDeviceListener);
 		audioConfig.playbackDeviceNameProperty().addListener(playbackDeviceListener);
+		audioConfig.playbackVolumeProperty().addListener(playbackVolumeListener);
 
 		setStreamState(ExecutableState.Started);
 
@@ -368,6 +379,7 @@ public class WebRtcStreamService extends ExecutableBase {
 		streamConfig.cameraNameProperty().removeListener(cameraDeviceListener);
 		audioConfig.captureDeviceNameProperty().removeListener(captureDeviceListener);
 		audioConfig.playbackDeviceNameProperty().removeListener(playbackDeviceListener);
+		audioConfig.playbackVolumeProperty().removeListener(playbackVolumeListener);
 
 		setStreamState(ExecutableState.Stopped);
 	}
@@ -429,10 +441,10 @@ public class WebRtcStreamService extends ExecutableBase {
 		StreamConfiguration streamConfig = config.getStreamConfig();
 
 		ServiceParameters stateWsParameters = new ServiceParameters();
-		stateWsParameters.setUrl(streamStateWebSocketUrl);
+		stateWsParameters.setUrl(webServiceInfo.getStreamStateWebSocketUrl());
 
 		ServiceParameters streamApiParameters = new ServiceParameters();
-		streamApiParameters.setUrl(streamPublisherApiUrl);
+		streamApiParameters.setUrl(webServiceInfo.getStreamPublisherApiUrl());
 
 		TokenProvider tokenProvider = streamConfig::getAccessToken;
 
@@ -447,8 +459,12 @@ public class WebRtcStreamService extends ExecutableBase {
 	}
 
 	private JanusWebSocketClient createJanusClient(StreamContext streamContext) {
+		PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();
+		StreamConfiguration streamConfig = config.getStreamConfig();
+
 		ServiceParameters janusWsParameters = new ServiceParameters();
-		janusWsParameters.setUrl(janusWebSocketUrl);
+		janusWsParameters.setUrl(MessageFormat.format(webServiceInfo.getJanusWebSocketUrl(),
+				streamConfig.getServerName()));
 
 		return new JanusWebSocketClient(context.getEventBus(), janusWsParameters,
 				streamContext, eventRecorder, clientFailover);
@@ -472,22 +488,33 @@ public class WebRtcStreamService extends ExecutableBase {
 				streamConfig.getCameraName());
 
 		StreamContext streamContext = new StreamContext();
-		streamContext.getAudioContext().setSendAudio(streamConfig.getMicrophoneEnabled());
-		streamContext.getAudioContext().setReceiveAudio(true);
-		streamContext.getAudioContext().setRecordingDevice(audioCaptureDevice);
-		streamContext.getAudioContext().setPlaybackDevice(audioPlaybackDevice);
+		StreamAudioContext audioContext = streamContext.getAudioContext();
+		StreamVideoContext videoContext = streamContext.getVideoContext();
 
-		streamContext.getVideoContext().setSendVideo(streamConfig.getCameraEnabled());
-		streamContext.getVideoContext().setReceiveVideo(true);
-		streamContext.getVideoContext().setCaptureDevice(videoCaptureDevice);
-		streamContext.getVideoContext().setCaptureCapability(
-				new VideoCaptureCapability((int) cameraViewRect.getWidth(),
-						(int) cameraViewRect.getHeight(),
-						(int) streamConfig.getCameraFormat().getFrameRate()));
-		streamContext.getVideoContext().setBitrate(cameraConfig.getBitRate());
+		audioContext.setSendAudio(streamConfig.getMicrophoneEnabled());
+		audioContext.setReceiveAudio(true);
+		audioContext.setRecordingDevice(audioCaptureDevice);
+		audioContext.setPlaybackDevice(audioPlaybackDevice);
+		audioContext.setPlaybackVolume(audioConfig.getPlaybackVolume());
+		audioContext.setFrameConsumer(this::processAudioFrame);
+
+		videoContext.setSendVideo(streamConfig.getCameraEnabled());
+		videoContext.setReceiveVideo(true);
+		videoContext.setCaptureDevice(videoCaptureDevice);
+		videoContext.setBitrate(cameraConfig.getBitRate());
+		videoContext.setFrameConsumer(videoFrame -> {
+			context.getEventBus().post(videoFrame);
+		});
+
+		if (nonNull(streamConfig.getCameraFormat())) {
+			videoContext.setCaptureCapability(new VideoCaptureCapability(
+					(int) cameraViewRect.getWidth(),
+					(int) cameraViewRect.getHeight(),
+					(int) streamConfig.getCameraFormat().getFrameRate()));
+		}
 
 		RTCIceServer iceServer = new RTCIceServer();
-		iceServer.urls.add(streamStunServers);
+		iceServer.urls.add(webServiceInfo.getStreamStunServers());
 
 		streamContext.getRTCConfig().iceServers.add(iceServer);
 
@@ -496,14 +523,64 @@ public class WebRtcStreamService extends ExecutableBase {
 		streamContext.setPeerStateConsumer(event -> {
 			context.getEventBus().post(event);
 		});
-		streamContext.setOnRemoteVideoFrame(videoFrame -> {
-			context.getEventBus().post(videoFrame);
-		});
 
 		streamConfig.enableMicrophoneProperty().addListener((o, oldValue, newValue) -> {
-			streamContext.getAudioContext().setSendAudio(newValue);
+			audioContext.setSendAudio(newValue);
 		});
 
 		return streamContext;
+	}
+
+	private void processAudioFrame(final AudioFrame frame) {
+		audioProcessor.onAudioFrame(frame);
+	}
+
+
+
+	private class AudioFrameProcessor {
+
+		private final AudioFormat audioFormat;
+
+		private AudioConverter audioConverter;
+
+		private int lastSampleRate;
+
+		private int lastChannels;
+
+
+		public AudioFrameProcessor(AudioFormat audioFormat) {
+			this.audioFormat = audioFormat;
+		}
+
+		public void onAudioFrame(AudioFrame frame) {
+			final int sampleRate = frame.getSampleRate();
+			final int channels = frame.getChannels();
+
+			if (nonNull(audioConverter) && (lastSampleRate != sampleRate
+					|| lastChannels != channels)) {
+				audioConverter.dispose();
+				audioConverter = null;
+			}
+			if (isNull(audioConverter)) {
+				lastSampleRate = sampleRate;
+				lastChannels = channels;
+
+				audioConverter = new AudioConverter(sampleRate, channels,
+						audioFormat.getSampleRate(), audioFormat.getChannels());
+			}
+
+			byte[] buffer = new byte[audioConverter.getTargetBufferSize()];
+
+			try {
+				int converted = audioConverter.convert(frame.getData(), buffer);
+
+				recordingService.addAudioFrame(new AudioFrame(buffer,
+						audioFormat.getBitsPerSample(), audioFormat.getSampleRate(),
+						audioFormat.getChannels(), converted));
+			}
+			catch (Throwable e) {
+				logException(e, "Convert peer audio failed");
+			}
+		}
 	}
 }

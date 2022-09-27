@@ -79,10 +79,12 @@ public class JsonConfigurationService<T> implements ConfigurationService<T> {
 		module.setMixInAnnotation(Rectangle2D.class, Rectangle2DMixin.class);
 
 		mapper = new ObjectMapper();
+		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 		mapper.enable(SerializationFeature.INDENT_OUTPUT);
 		mapper.registerModules(new Jdk8Module(), new JavaTimeModule());
 		mapper.registerModule(module);
-		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+		initModules(mapper);
 	}
 
 	@Override
@@ -122,6 +124,16 @@ public class JsonConfigurationService<T> implements ConfigurationService<T> {
 		}
 
 		mapper.writeValue(file, config);
+	}
+
+	/**
+	 * Validate the provided configuration. Can be used in order to check for
+	 * mandatory properties and set them accordingly.
+	 *
+	 * @param config The config to validate.
+	 */
+	public void validate(T config) {
+
 	}
 
 	/**

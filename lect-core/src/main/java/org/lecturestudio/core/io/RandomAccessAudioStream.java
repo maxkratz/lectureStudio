@@ -89,7 +89,6 @@ public class RandomAccessAudioStream extends DynamicInputStream {
 	 * @param targetFormat The new audio format.
 	 */
 	public void setAudioFormat(AudioFormat targetFormat) {
-//		this.stream = AudioSystem.getAudioInputStream(AudioUtils.createAudioFormat(targetFormat), (AudioInputStream) this.stream);
 		this.audioFormat = targetFormat;
 	}
 
@@ -125,20 +124,12 @@ public class RandomAccessAudioStream extends DynamicInputStream {
 		addExclusion(new Interval<>(start, end));
 	}
 
-	public void addExclusionMillis(Interval<Long> interval) {
-		long start = AudioUtils.getAudioBytePosition(audioFormat, interval.getStart());
-		long end = AudioUtils.getAudioBytePosition(audioFormat, interval.getEnd());
-
-		addExclusion(new Interval<>(start, end));
-	}
-
 	public long getLengthInMillis() {
 		AudioFormat format = getAudioFormat();
 
 		double bytesPerSecond = AudioUtils.getBytesPerSecond(format);
-		long streamLength = getLength() - 78; // - Header
 
-		return (long) ((streamLength / (float) bytesPerSecond) * 1000);
+		return (long) ((getLength() / (float) bytesPerSecond) * 1000);
 	}
 
 	@Override
@@ -202,6 +193,9 @@ public class RandomAccessAudioStream extends DynamicInputStream {
 	private void boundInterval(Interval<Long> interval) {
 		if (interval.lengthLong() == 0) {
 			return;
+		}
+		if (interval.getStart() < 70) {
+			interval.set(72L, interval.getEnd());
 		}
 		if (interval.getEnd() > streamLength) {
 			interval.set(interval.getStart(), streamLength);

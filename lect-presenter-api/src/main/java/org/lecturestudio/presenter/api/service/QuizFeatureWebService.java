@@ -22,12 +22,13 @@ import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -35,22 +36,26 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import javax.ws.rs.core.MediaType;
+
+import org.apache.commons.io.FilenameUtils;
+
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import org.lecturestudio.core.ExecutableException;
-import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.dictionary.Dictionary;
 import org.lecturestudio.core.bus.EventBus;
+import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.DocumentType;
-import org.lecturestudio.core.pdf.PdfDocument;
+import org.lecturestudio.core.model.Page;
 import org.lecturestudio.core.service.DocumentService;
-import org.lecturestudio.core.util.FileUtils;
-import org.lecturestudio.core.util.ProgressCallback;
-import org.lecturestudio.presenter.api.pdf.PdfFactory;
-import org.lecturestudio.presenter.api.quiz.QuizResultCsvWriter;
+import org.lecturestudio.presenter.api.config.DocumentTemplateConfiguration;
+import org.lecturestudio.presenter.api.context.PresenterContext;
+import org.lecturestudio.presenter.api.model.QuizDocument;
+import org.lecturestudio.web.api.client.MultipartBody;
 import org.lecturestudio.web.api.message.QuizAnswerMessage;
 import org.lecturestudio.web.api.model.quiz.Quiz;
 import org.lecturestudio.web.api.model.quiz.QuizAnswer;
@@ -87,7 +92,7 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 	 * @param featureService  The quiz web feature service.
 	 * @param documentService The document service.
 	 */
-	public QuizFeatureWebService(ApplicationContext context,
+	public QuizFeatureWebService(PresenterContext context,
 			QuizFeatureService featureService,
 			DocumentService documentService) {
 		super(context);
@@ -107,51 +112,10 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 		this.quizResult = new QuizResult(quiz);
 	}
 
-	/**
-	 * Writes quiz results to the provided file paths. Each file may have its own
-	 * individual file format. If the file format is not supported, the file will
-	 * be skipped.
-	 *
-	 * @param files The files to write to with individual file formats.
-	 * @param callback The callback to be invoked on write progress.
-	 *
-	 * @throws IOException if the quiz results could not be written to the files.
-	 * @throws NullPointerException if no quiz result was created.
-	 */
-	public void saveQuizResult(List<String> files, ProgressCallback callback) throws IOException {
-		if (isNull(quizResult)) {
-			throw new NullPointerException("No quiz result created");
-		}
-
-		int total = files.size();
-		int count = 0;
-
-		for (String file : files) {
-			String ext = FileUtils.getExtension(file);
-			switch (ext) {
-				case "csv":
-					QuizResultCsvWriter csvWriter = new QuizResultCsvWriter(',');
-					csvWriter.write(quizResult, new File(file));
-					break;
-
-				case "pdf":
-					FileOutputStream fileStream = new FileOutputStream(file);
-					quizDocument.toOutputStream(fileStream);
-					fileStream.close();
-					break;
-
-				default:
-					break;
-			}
-
-			callback.onProgress(1.f * ++count / total);
-		}
-	}
-
 	@Override
 	protected void initInternal() throws ExecutableException {
 		if (isNull(quiz)) {
-			throw new NullPointerException("No quiz provided.");
+			throw new ExecutableException("No quiz provided");
 		}
 
 		executorService = new ThreadPoolExecutor(1, 1, 0L,
@@ -161,7 +125,7 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 	@Override
 	protected void startInternal() throws ExecutableException {
 		if (isNull(quizResult)) {
-			throw new NullPointerException("No quiz result created.");
+			throw new ExecutableException("No quiz result created");
 		}
 
 		answerCount = 0;
@@ -169,10 +133,11 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 		// Create a copy, since the markup of the question gets changed for the web view.
 		Quiz webQuiz = quiz.clone();
 
-		List<File> files = loadQuizContent(webQuiz);
-
 		try {
-			serviceId = webService.startQuiz(courseId, webQuiz);
+			MultipartBody data = getQuizResources(webQuiz);
+			data.addFormData("quiz", webQuiz, MediaType.APPLICATION_JSON_TYPE);
+
+			serviceId = webService.startQuiz(courseId, data);
 
 			webService.addMessageListener(QuizAnswerMessage.class, messageConsumer);
 		}
@@ -181,26 +146,7 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 		}
 
 		if (isNull(quizDocument)) {
-			// Add quiz document.
-			quizDocument = createQuizDocument(quizResult);
-			quizDocument.setUid(UUID.randomUUID());
-
-			Document prevQuizDoc = null;
-
-			for (Document doc : documentService.getDocuments().asList()) {
-				if (doc.isQuiz()) {
-					prevQuizDoc = doc;
-				}
-			}
-
-			if (nonNull(prevQuizDoc)) {
-				documentService.replaceDocument(prevQuizDoc, quizDocument);
-			}
-			else {
-				documentService.addDocument(quizDocument);
-			}
-
-			documentService.selectDocument(quizDocument);
+			updateQuizDocument();
 		}
 		else {
 			// Replace quiz document in silent-mode.
@@ -223,8 +169,6 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 
 	@Override
 	protected void destroyInternal() {
-//		documentService.removeDocument(quizDocument);
-
 		executorService.shutdown();
 	}
 
@@ -250,11 +194,13 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 
 		try {
 			Dictionary dict = context.getDictionary();
-			PdfDocument pdfDoc = PdfFactory.createQuizDocument(dict, result);
-			pdfDoc.setTitle("Quiz");
-			pdfDoc.setAuthor(System.getProperty("user.name"));
+			DocumentTemplateConfiguration templateConfig = context.getConfiguration()
+					.getTemplateConfig().getQuizTemplateConfig();
+			String template = templateConfig.getTemplatePath();
+			Rectangle2D templateBounds = templateConfig.getBounds();
+			File file = new File(nonNull(template) ? template : "");
 
-			doc = new Document(pdfDoc);
+			doc = new QuizDocument(file, templateBounds, dict, result);
 			doc.setDocumentType(DocumentType.QUIZ);
 		}
 		catch (Exception e) {
@@ -264,11 +210,48 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 		return doc;
 	}
 
+	private void updateQuizDocument() throws ExecutableException {
+		// Add quiz document.
+		quizDocument = createQuizDocument(quizResult);
+		quizDocument.setUid(UUID.randomUUID());
+
+		for (var page : quizDocument.getPages()) {
+			page.setUid(UUID.randomUUID());
+		}
+
+		Document prevQuizDoc = null;
+
+		// Find old quiz document.
+		for (Document doc : documentService.getDocuments().asList()) {
+			if (doc.isQuiz()) {
+				prevQuizDoc = doc;
+			}
+		}
+
+		if (nonNull(prevQuizDoc)) {
+			documentService.replaceDocument(prevQuizDoc, quizDocument);
+		}
+		else {
+			documentService.addDocument(quizDocument);
+		}
+
+		documentService.selectDocument(quizDocument);
+	}
+
 	private void updateQuizDocument(boolean copyAnnotations) {
 		try {
-			Document oldDoc = quizDocument;
+			final Document oldDoc = quizDocument;
 			quizDocument = createQuizDocument(quizResult);
 			quizDocument.setUid(copyAnnotations ? oldDoc.getUid() : UUID.randomUUID());
+
+			for (int i = 0; i < quizDocument.getPageCount(); i++) {
+				Page page = quizDocument.getPage(i);
+				Page oldPage = oldDoc.getPage(i);
+
+				if (nonNull(oldPage)) {
+					page.setUid(copyAnnotations ? oldPage.getUid() : null);
+				}
+			}
 
 			documentService.replaceDocument(oldDoc, quizDocument, copyAnnotations);
 		}
@@ -291,7 +274,30 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 		}
 	}
 
-	private List<File> loadQuizContent(Quiz quiz) {
+	private MultipartBody getQuizResources(Quiz quiz) throws IOException {
+		MultipartBody body = new MultipartBody();
+		Map<File, String> files = loadQuizContent(quiz);
+
+		for (var entry : files.entrySet()) {
+			File file = entry.getKey();
+			String mimeType = Files.probeContentType(file.toPath());
+
+			if (isNull(mimeType)) {
+				mimeType = "*/*";
+			}
+
+			logDebugMessage("Add quiz resource: %s as %s", file, mimeType);
+
+			body.addFormData("files", new FileInputStream(file),
+					MediaType.valueOf(mimeType), entry.getValue());
+		}
+
+		return body;
+	}
+
+	private Map<File, String> loadQuizContent(Quiz quiz) {
+		Map<File, String> fileMap = new HashMap<>();
+
 		// Parse template and pretty print
 		String html = quiz.getQuestion();
 		org.jsoup.nodes.Document doc = Jsoup.parse(html);
@@ -301,11 +307,9 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 		// Add a whitespace within empty div's.
 		for (Element element : doc.select("div")) {
 			if (!element.hasText() && element.isBlock()) {
-				element.html("&nbsp;");
+				element.appendElement("br");
 			}
 		}
-
-		List<File> includeFiles = new ArrayList<>();
 
 		// Get all elements with image tag.
 		Elements img = doc.getElementsByTag("img");
@@ -313,17 +317,20 @@ public class QuizFeatureWebService extends FeatureServiceBase {
 			String src = e.absUrl("src");
 			File imgFile = new File(URI.create(src).getPath());
 
-			includeFiles.add(imgFile);
+			String generatedName = UUID.randomUUID() + "."
+					+ FilenameUtils.getExtension(imgFile.getName());
+
+			fileMap.put(imgFile, generatedName);
 
 			// Replace by new relative web-root path.
-			e.attr("src", Paths.get("classrooms", imgFile.getName()).toString()
-					.replaceAll("\\\\", "/"));
+			e.attr("src", Paths.get(Long.toString(courseId), "quiz", "resource",
+					generatedName).toString().replaceAll("\\\\", "/"));
 		}
 
 		html = doc.body().html();
 
 		quiz.setQuestion(html);
 
-		return includeFiles;
+		return fileMap;
 	}
 }

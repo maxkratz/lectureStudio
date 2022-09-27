@@ -18,8 +18,7 @@
 
 package org.lecturestudio.presenter.api.presenter;
 
-import java.io.IOException;
-import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 
 import javax.inject.Inject;
 
@@ -29,6 +28,7 @@ import org.lecturestudio.core.presenter.Presenter;
 import org.lecturestudio.presenter.api.config.DefaultConfiguration;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.config.StreamConfiguration;
+import org.lecturestudio.presenter.api.service.WebServiceInfo;
 import org.lecturestudio.presenter.api.view.StreamSettingsView;
 import org.lecturestudio.web.api.service.ServiceParameters;
 import org.lecturestudio.web.api.stream.service.StreamProviderService;
@@ -37,14 +37,15 @@ public class StreamSettingsPresenter extends Presenter<StreamSettingsView> {
 
 	private final DefaultConfiguration defaultConfig;
 
-	private StreamProviderService streamProviderService;
+	private final WebServiceInfo webServiceInfo;
 
 
 	@Inject
 	public StreamSettingsPresenter(ApplicationContext context,
-			StreamSettingsView view) {
+			StreamSettingsView view, WebServiceInfo webServiceInfo) {
 		super(context, view);
 
+		this.webServiceInfo = webServiceInfo;
 		this.defaultConfig = new DefaultConfiguration();
 	}
 
@@ -65,41 +66,31 @@ public class StreamSettingsPresenter extends Presenter<StreamSettingsView> {
 		PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();
 		StreamConfiguration streamConfig = config.getStreamConfig();
 
+		view.setServerName(streamConfig.serverNameProperty());
 		view.setAccessToken(streamConfig.accessTokenProperty());
 		view.setOnCheckAccessToken(this::checkAccessToken);
 		view.setOnReset(this::reset);
-
-		// Retrieve properties here since named injection does not work.
-		Properties streamProps = new Properties();
-
-		try {
-			streamProps.load(getClass().getClassLoader()
-					.getResourceAsStream("resources/stream.properties"));
-		}
-		catch (IOException e) {
-			logException(e, "Load stream properties failed");
-		}
-
-		String streamPublisherApiUrl = streamProps.getProperty(
-				"stream.publisher.api.url");
-
-		ServiceParameters parameters = new ServiceParameters();
-		parameters.setUrl(streamPublisherApiUrl);
-
-		streamProviderService = new StreamProviderService(parameters,
-				streamConfig::getAccessToken);
 
 		checkAccessToken();
 	}
 
 	public void checkAccessToken() {
-		try {
-			streamProviderService.getCourses();
+		PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();
+		StreamConfiguration streamConfig = config.getStreamConfig();
 
-			view.setAccessTokenValid(true);
-		}
-		catch (Exception e) {
-			view.setAccessTokenValid(false);
-		}
+		ServiceParameters parameters = new ServiceParameters();
+		parameters.setUrl(webServiceInfo.getStreamPublisherApiUrl());
+
+		StreamProviderService streamProviderService = new StreamProviderService(
+				parameters, streamConfig::getAccessToken);
+
+		CompletableFuture.runAsync(streamProviderService::getCourses)
+				.thenRun(() -> {
+					view.setAccessTokenValid(true);
+				})
+				.exceptionally(throwable -> {
+					view.setAccessTokenValid(false);
+					return null;
+				});
 	}
 }

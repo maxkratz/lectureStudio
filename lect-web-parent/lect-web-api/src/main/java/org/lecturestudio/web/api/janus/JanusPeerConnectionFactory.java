@@ -68,14 +68,19 @@ public class JanusPeerConnectionFactory {
 			return new PeerConnectionFactory(audioModule);
 		});
 
-		audioContext.playbackDeviceProperty().addListener((observable, oldValue, newValue) -> {
+		audioContext.playbackDeviceProperty().addListener((o, oldValue, newValue) -> {
 			executeAndWait(() -> {
 				setPlaybackDevice(newValue, true);
 			});
 		});
-		audioContext.recordingDeviceProperty().addListener((observable, oldValue, newValue) -> {
+		audioContext.recordingDeviceProperty().addListener((o, oldValue, newValue) -> {
 			executeAndWait(() -> {
 				setRecordingDevice(newValue, true);
+			});
+		});
+		audioContext.playbackVolumeProperty().addListener((o, oldValue, newValue) -> {
+			execute(() -> {
+				setPlaybackVolume(newValue);
 			});
 		});
 	}
@@ -120,8 +125,16 @@ public class JanusPeerConnectionFactory {
 		audioModule.setPlayoutDevice(device);
 		audioModule.initPlayout();
 
+		setPlaybackVolume(context.getAudioContext().getPlaybackVolume());
+
 		if (start) {
 			audioModule.startPlayout();
+		}
+	}
+
+	private void setPlaybackVolume(double volume) {
+		if (nonNull(audioModule)) {
+			audioModule.setSpeakerVolume((int) (volume * 100));
 		}
 	}
 
@@ -155,6 +168,15 @@ public class JanusPeerConnectionFactory {
 	private void executeAndWait(Runnable runnable) {
 		try {
 			executor.submit(runnable).get();
+		}
+		catch (Exception e) {
+			LOGGER.error("Execute task failed", e);
+		}
+	}
+
+	private void execute(Runnable runnable) {
+		try {
+			executor.submit(runnable);
 		}
 		catch (Exception e) {
 			LOGGER.error("Execute task failed", e);

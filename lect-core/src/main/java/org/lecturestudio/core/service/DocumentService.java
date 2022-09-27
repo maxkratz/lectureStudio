@@ -47,6 +47,7 @@ import org.lecturestudio.core.model.DocumentList;
 import org.lecturestudio.core.model.DocumentType;
 import org.lecturestudio.core.model.Page;
 import org.lecturestudio.core.model.RecentDocument;
+import org.lecturestudio.core.model.TemplateDocument;
 
 @Singleton
 public class DocumentService {
@@ -82,7 +83,32 @@ public class DocumentService {
 				whiteboard = createWhiteboard();
 			}
 			catch (Exception e) {
-				throw new RuntimeException("Create whiteboard failed");
+				throw new CompletionException("Create whiteboard failed", e);
+			}
+
+			addDocument(whiteboard);
+			selectDocument(whiteboard);
+
+			return whiteboard;
+		});
+	}
+
+	/**
+	 * Creates and selects a new whiteboard.
+	 *
+	 * @param templatePath The file path of the template document.
+	 */
+	public CompletableFuture<Document> addWhiteboard(String templatePath) {
+		final File file = new File(nonNull(templatePath) ? templatePath : "");
+
+		return CompletableFuture.supplyAsync(() -> {
+			Document whiteboard;
+
+			try {
+				whiteboard = createWhiteboard(file);
+			}
+			catch (Exception e) {
+				throw new CompletionException("Create whiteboard failed", e);
 			}
 
 			addDocument(whiteboard);
@@ -97,7 +123,9 @@ public class DocumentService {
 	 * whiteboard is created. If more than one whiteboard is present, then the
 	 * first whiteboard in the document list will be opened.
 	 */
-	public CompletableFuture<Document> openWhiteboard() {
+	public CompletableFuture<Document> openWhiteboard(String templatePath) {
+		final File file = new File(nonNull(templatePath) ? templatePath : "");
+
 		return CompletableFuture.supplyAsync(() -> {
 			// Search for a opened whiteboard.
 			Document whiteboard = documents.getFirstWhiteboard();
@@ -105,7 +133,7 @@ public class DocumentService {
 			// If there isn't any whiteboard, then create one.
 			if (isNull(whiteboard)) {
 				try {
-					whiteboard = createWhiteboard();
+					whiteboard = createWhiteboard(file);
 				}
 				catch (IOException e) {
 					throw new CompletionException("Create whiteboard failed", e);
@@ -128,7 +156,7 @@ public class DocumentService {
 		Document selectedDocument = documents.getSelectedDocument();
 
 		if (isNull(selectedDocument) || !selectedDocument.isWhiteboard()) {
-			openWhiteboard().join();
+			openWhiteboard("").join();
 		}
 		else {
 			selectDocument(documents.getLastNonWhiteboard());
@@ -292,7 +320,7 @@ public class DocumentService {
 
 	/**
 	 * Removes the selected page on the active whiteboard. Does nothing if the
-	 * selected Document is not a whiteboard. If this would lead to an empty
+	 * selected Document is not a whiteboard. If this leaded to an empty
 	 * whiteboard, a new blank page is set as the first page of the whiteboard.
 	 */
 	public void deleteWhiteboardPage() {
@@ -302,30 +330,31 @@ public class DocumentService {
 			throw new IllegalArgumentException("No whiteboard selected");
 		}
 
-		if (selectedDocument.getPageCount() > 1) {
+		if (selectedDocument.getPageCount() > 0) {
 			Page selectedPage = selectedDocument.getCurrentPage();
+			int pageNumber = selectedPage.getPageNumber();
 
 			if (selectedDocument.removePage(selectedPage)) {
 				context.getEventBus().post(new PageEvent(selectedPage,
 						PageEvent.Type.REMOVED));
 
 				// Check if the removed page was selected.
-				int pageNumber = selectedPage.getPageNumber();
-
 				if (pageNumber == selectedDocument.getPages().size()) {
 					pageNumber--;
+				}
+
+				if (selectedDocument.getPageCount() == 0) {
+					Page page = selectedDocument.createPage();
+
+					context.getEventBus().post(new PageEvent(page,
+							PageEvent.Type.CREATED));
+
+					pageNumber = page.getPageNumber();
 				}
 
 				selectPage(selectedDocument, pageNumber);
 			}
 		}
-		else {
-			selectedDocument.getCurrentPage().reset();
-		}
-	}
-
-	public void createMessagePage(String message) {
-//		Document selectedDocument
 	}
 
 	/**
@@ -385,6 +414,32 @@ public class DocumentService {
 			context.getEventBus().post(new PageEvent(newPage, oldPage,
 					PageEvent.Type.SELECTED));
 		}
+	}
+
+	/**
+	 * Creates a new whiteboard from a template document.
+	 *
+	 * @param templateFile The file path of the template document.
+	 *
+	 * @return a newly created whiteboard document.
+	 *
+	 * @throws IOException if the whiteboard could not be created.
+	 */
+	private Document createWhiteboard(File templateFile) throws IOException {
+		String name = "Whiteboard-" + documents.getWhiteboardCount();
+		Document whiteboard;
+
+		if (templateFile.exists()) {
+			whiteboard = new TemplateDocument(templateFile);
+			whiteboard.setTitle(name);
+			whiteboard.setDocumentType(DocumentType.WHITEBOARD);
+			whiteboard.createPage();
+		}
+		else {
+			whiteboard = createWhiteboard();
+		}
+
+		return whiteboard;
 	}
 
 	/**

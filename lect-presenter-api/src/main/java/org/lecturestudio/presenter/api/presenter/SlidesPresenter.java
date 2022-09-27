@@ -18,12 +18,15 @@
 
 package org.lecturestudio.presenter.api.presenter;
 
+import static java.util.Objects.*;
+
 import com.google.common.eventbus.Subscribe;
+
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.configuration.DisplayConfiguration;
-import org.lecturestudio.core.app.configuration.GridConfiguration;
+import org.lecturestudio.core.app.configuration.WhiteboardConfiguration;
 import org.lecturestudio.core.bus.EventBus;
 import org.lecturestudio.core.bus.event.DocumentEvent;
 import org.lecturestudio.core.bus.event.PageEvent;
@@ -31,7 +34,6 @@ import org.lecturestudio.core.bus.event.ToolSelectionEvent;
 import org.lecturestudio.core.controller.PresentationController;
 import org.lecturestudio.core.controller.RenderController;
 import org.lecturestudio.core.controller.ToolController;
-import org.lecturestudio.core.geometry.Dimension2D;
 import org.lecturestudio.core.geometry.Matrix;
 import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.graphics.Color;
@@ -50,13 +52,14 @@ import org.lecturestudio.core.tool.ToolType;
 import org.lecturestudio.core.util.ListChangeListener;
 import org.lecturestudio.core.util.ObservableList;
 import org.lecturestudio.core.view.*;
+import org.lecturestudio.presenter.api.config.DocumentTemplateConfiguration;
 import org.lecturestudio.presenter.api.config.ExternalWindowConfiguration;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.presenter.api.event.*;
 import org.lecturestudio.presenter.api.input.Shortcut;
 import org.lecturestudio.presenter.api.model.MessageBarPosition;
-import org.lecturestudio.presenter.api.pdf.PdfFactory;
+import org.lecturestudio.presenter.api.model.MessageDocument;
 import org.lecturestudio.presenter.api.service.RecordingService;
 import org.lecturestudio.presenter.api.service.WebRtcStreamService;
 import org.lecturestudio.presenter.api.service.WebService;
@@ -73,6 +76,7 @@ import org.lecturestudio.web.api.message.SpeechRequestMessage;
 
 import javax.inject.Inject;
 import java.awt.*;
+import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
@@ -80,8 +84,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
-
-import static java.util.Objects.*;
 
 public class SlidesPresenter extends Presenter<SlidesView> {
 
@@ -159,18 +161,10 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		Document doc = event.getDocument();
 
 		switch (event.getType()) {
-			case CREATED:
-				documentCreated(doc);
-				break;
-			case CLOSED:
-				documentClosed(doc);
-				break;
-			case SELECTED:
-				documentSelected(event.getOldDocument(), doc);
-				break;
-			case REPLACED:
-				documentReplaced(event.getOldDocument(), doc);
-				break;
+			case CREATED -> documentCreated(doc);
+			case CLOSED -> documentClosed(doc);
+			case SELECTED -> documentSelected(event.getOldDocument(), doc);
+			case REPLACED -> documentReplaced(event.getOldDocument(), doc);
 		}
 
 		if (documentService.getDocuments().size() > 0) {
@@ -436,8 +430,17 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	private void onCreateMessageSlide(MessengerMessage message) {
 		onDiscardMessage(message);
 
+		PresenterContext presenterContext = (PresenterContext) context;
+		DocumentTemplateConfiguration templateConfig = presenterContext.getConfiguration()
+				.getTemplateConfig().getChatMessageTemplateConfig();
+		String template = templateConfig.getTemplatePath();
+		Rectangle2D templateBounds = templateConfig.getBounds();
+
 		try {
-			Document messageDocument = createMessageDocument(message.getMessage().getText());
+			File file = new File(nonNull(template) ? template : "");
+
+			Document messageDocument = new MessageDocument(file, templateBounds,
+					context.getDictionary(), message.getMessage().getText());
 
 			Document prevMessageDocument = null;
 
@@ -460,18 +463,6 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		catch (Throwable e) {
 			handleException(e, "Create message slide failed", "message.slide.create.error");
 		}
-	}
-
-	private Document createMessageDocument(final String message) throws Exception {
-		Document doc = new Document();
-		doc.setTitle(context.getDictionary().get("slides.message"));
-		doc.setDocumentType(DocumentType.MESSAGE);
-		doc.createPage();
-
-		PdfFactory.createMessagePage(doc.getPdfDocument(), message);
-		doc.reload();
-
-		return doc;
 	}
 
 	private void toolChanged(ToolType toolType) {
@@ -776,19 +767,15 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		final PresenterContext ctx = (PresenterContext) context;
 		final PresenterConfiguration config = getPresenterConfig();
 		final DisplayConfiguration displayConfig = config.getDisplayConfig();
-		final GridConfiguration gridConfig = config.getGridConfig();
+		final WhiteboardConfiguration wbConfig = config.getWhiteboardConfig();
 
 		// Set default tool.
 		toolController.selectPenTool();
 
 		pageEditedListener = (event) -> {
 			switch (event.getType()) {
-				case SHAPE_ADDED:
-					pageShapeAdded(event.getShape());
-					break;
-				case CLEAR:
-					setPage(event.getPage());
-					break;
+				case SHAPE_ADDED -> pageShapeAdded(event.getShape());
+				case CLEAR -> setPage(event.getPage());
 			}
 		};
 
@@ -814,7 +801,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 			checkRemoteServiceState();
 		});
 
-		gridConfig.showGridOnDisplaysProperty().addListener((observable, oldValue, newValue) -> {
+		wbConfig.showGridOnDisplaysProperty().addListener((observable, oldValue, newValue) -> {
 			// Update grid parameter.
 			PresentationParameterProvider pProvider = context.getPagePropertyProvider(ViewType.Presentation);
 

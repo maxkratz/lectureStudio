@@ -24,25 +24,18 @@ import java.util.List;
 import org.lecturestudio.core.app.AppDataLocator;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.configuration.Configuration;
-import org.lecturestudio.core.app.configuration.ConfigurationService;
 import org.lecturestudio.core.app.dictionary.Dictionary;
 import org.lecturestudio.core.beans.BooleanProperty;
 import org.lecturestudio.core.beans.IntegerProperty;
 import org.lecturestudio.core.beans.ObjectProperty;
 import org.lecturestudio.core.bus.EventBus;
-import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.util.ListChangeListener;
 import org.lecturestudio.core.util.ObservableArrayList;
 import org.lecturestudio.core.util.ObservableList;
 import org.lecturestudio.presenter.api.config.PresenterConfigService;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
-import org.lecturestudio.presenter.api.model.Bookmarks;
-import org.lecturestudio.presenter.api.service.BookmarkService;
-import org.lecturestudio.presenter.api.service.QuizDataSource;
-import org.lecturestudio.presenter.api.service.QuizService;
 import org.lecturestudio.web.api.message.MessengerMessage;
 import org.lecturestudio.web.api.message.SpeechRequestMessage;
-import org.lecturestudio.web.api.model.quiz.Quiz;
 import org.lecturestudio.web.api.stream.model.Course;
 
 public class PresenterContext extends ApplicationContext {
@@ -70,6 +63,8 @@ public class PresenterContext extends ApplicationContext {
 
 	private final BooleanProperty streamStarted = new BooleanProperty();
 
+	private final BooleanProperty recordingStarted = new BooleanProperty();
+
 	private final BooleanProperty hasRecordedChanges = new BooleanProperty();
 
 	private final BooleanProperty showOutline = new BooleanProperty();
@@ -78,20 +73,9 @@ public class PresenterContext extends ApplicationContext {
 
 	private final String recordingDir;
 
-	private final BookmarkService bookmarkService;
-
-	private final QuizService quizService;
-
-    private Quiz lastQuiz;
-
 
 	public PresenterContext(AppDataLocator dataLocator, File configFile, Configuration config, Dictionary dict, EventBus eventBus, EventBus audioBus) {
 		super(dataLocator, config, dict, eventBus, audioBus);
-
-		File quizFile = new File(dataLocator.toAppDataPath("quiz.txt"));
-
-		bookmarkService = new BookmarkService(getDocumentService());
-		quizService = new QuizService(new QuizDataSource(quizFile), getDocumentService());
 
 		this.configFile = configFile;
 		this.recordingDir = getDataLocator().toAppDataPath("recording");
@@ -113,10 +97,14 @@ public class PresenterContext extends ApplicationContext {
 		});
 	}
 
+	public PresenterConfiguration getConfiguration() {
+		return (PresenterConfiguration) super.getConfiguration();
+	}
+
 	@Override
 	public void saveConfiguration() throws Exception {
-		ConfigurationService<PresenterConfiguration> configService = new PresenterConfigService();
-		configService.save(configFile, (PresenterConfiguration) getConfiguration());
+		var configService = new PresenterConfigService();
+		configService.save(configFile, getConfiguration());
 	}
 
 	public Course getCourse() {
@@ -195,6 +183,18 @@ public class PresenterContext extends ApplicationContext {
 		return messengerStarted;
 	}
 
+	public void setRecordingStarted(boolean started) {
+		recordingStarted.set(started);
+	}
+
+	public boolean getRecordingStarted() {
+		return recordingStarted.get();
+	}
+
+	public BooleanProperty recordingStartedProperty() {
+		return recordingStarted;
+	}
+
 	public void setShowOutline(boolean show) {
 		showOutline.set(show);
 	}
@@ -206,45 +206,4 @@ public class PresenterContext extends ApplicationContext {
 	public String getRecordingDirectory() {
 		return recordingDir;
 	}
-
-	public void setLastQuiz(Quiz quiz) {
-        this.lastQuiz = quiz;
-    }
-
-    public Quiz getLastQuiz() {
-        return lastQuiz;
-    }
-
-    public BookmarkService getBookmarkService() {
-		return bookmarkService;
-	}
-
-    public QuizService getQuizService() {
-		return quizService;
-	}
-
-    public List<Quiz> getQuizzes() {
-		try {
-			return quizService.getQuizzes();
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-			return null;
-		}
-	}
-
-    public List<Quiz> getQuizzes(Document doc) {
-		try {
-			return quizService.getQuizzes(doc);
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-			return null;
-		}
-	}
-
-	public Bookmarks getBookmarks() {
-		return bookmarkService.getBookmarks();
-	}
-
 }

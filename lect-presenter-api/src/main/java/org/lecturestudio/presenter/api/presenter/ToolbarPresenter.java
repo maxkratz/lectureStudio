@@ -18,15 +18,22 @@
 
 package org.lecturestudio.presenter.api.presenter;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 import com.google.common.eventbus.Subscribe;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import javax.inject.Inject;
 
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
+import org.lecturestudio.core.app.dictionary.Dictionary;
 import org.lecturestudio.core.audio.AudioDeviceNotConnectedException;
 import org.lecturestudio.core.bus.EventBus;
 import org.lecturestudio.core.bus.event.CustomizeToolbarEvent;
@@ -37,7 +44,10 @@ import org.lecturestudio.core.controller.PresentationController;
 import org.lecturestudio.core.controller.ToolController;
 import org.lecturestudio.core.graphics.Color;
 import org.lecturestudio.core.model.Document;
+import org.lecturestudio.core.model.DocumentList;
+import org.lecturestudio.core.model.DocumentType;
 import org.lecturestudio.core.model.Page;
+import org.lecturestudio.core.model.TemplateDocument;
 import org.lecturestudio.core.model.listener.PageEditEvent;
 import org.lecturestudio.core.model.listener.PageEditedListener;
 import org.lecturestudio.core.model.listener.ParameterChangeListener;
@@ -56,6 +66,7 @@ import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.presenter.api.event.RecordingStateEvent;
 import org.lecturestudio.presenter.api.event.StreamingStateEvent;
+import org.lecturestudio.presenter.api.presenter.command.StartRecordingCommand;
 import org.lecturestudio.presenter.api.service.RecordingService;
 import org.lecturestudio.presenter.api.view.ToolbarView;
 
@@ -261,7 +272,19 @@ public class ToolbarPresenter extends Presenter<ToolbarView> {
 	}
 
 	public void openWhiteboard() {
-		documentService.toggleWhiteboard();
+		DocumentList documents = documentService.getDocuments();
+		Document selectedDocument = documents.getSelectedDocument();
+
+		if (isNull(selectedDocument) || !selectedDocument.isWhiteboard()) {
+			PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();
+			String template = config.getTemplateConfig()
+					.getWhiteboardTemplateConfig().getTemplatePath();
+
+			documentService.openWhiteboard(template).join();
+		}
+		else {
+			documentService.selectDocument(documents.getLastNonWhiteboard());
+		}
 	}
 
 	public void enableDisplays(boolean enable) {
@@ -292,21 +315,33 @@ public class ToolbarPresenter extends Presenter<ToolbarView> {
 			if (recordingService.started()) {
 				recordingService.suspend();
 			}
-			else {
+			else if (recordingService.suspended()) {
 				recordingService.start();
+			}
+			else {
+				eventBus.post(new StartRecordingCommand(() -> {
+					PresenterContext pContext = (PresenterContext) context;
+
+					CompletableFuture.runAsync(() -> {
+						try {
+							recordingService.start();
+						}
+						catch (ExecutableException e) {
+							throw new CompletionException(e);
+						}
+
+						pContext.setRecordingStarted(true);
+					})
+					.exceptionally(e -> {
+						handleRecordingStateError(e);
+						pContext.setRecordingStarted(false);
+						return null;
+					});
+				}));
 			}
 		}
 		catch (ExecutableException e) {
-			Throwable cause = nonNull(e.getCause()) ? e.getCause().getCause() : null;
-
-			if (cause instanceof AudioDeviceNotConnectedException) {
-				var ex = (AudioDeviceNotConnectedException) cause;
-				showError("recording.start.error", "recording.start.device.error", ex.getDeviceName());
-				logException(e, "Start recording failed");
-			}
-			else {
-				handleException(e, "Start recording failed", "recording.start.error");
-			}
+			handleRecordingStateError(e);
 		}
 	}
 
@@ -330,6 +365,38 @@ public class ToolbarPresenter extends Presenter<ToolbarView> {
 
 	private void selectQuiz() {
 		eventBus.post(new ShowPresenterCommand<>(SelectQuizPresenter.class));
+	}
+
+	private void showAudienceMessageTemplate() {
+		PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();
+		Dictionary dict = context.getDictionary();
+		String template = config.getTemplateConfig()
+				.getHallMessageTemplateConfig().getTemplatePath();
+		File templateFile = new File(nonNull(template) ? template : "");
+
+		Document document = null;
+
+		try {
+			if (templateFile.exists()) {
+				document = new TemplateDocument(templateFile);
+			}
+			else {
+				document = new Document();
+			}
+		}
+		catch (IOException e) {
+			handleException(e, "Create whiteboard failed", "error",
+					"generic.error");
+		}
+
+		if (nonNull(document)) {
+			document.setTitle(dict.get("slides.audience.message"));
+			document.setDocumentType(DocumentType.MESSAGE);
+			document.createPage();
+
+			documentService.addDocument(document);
+			documentService.selectDocument(document);
+		}
 	}
 
 	private void pageParameterChanged(Page page, PresentationParameter parameter) {
@@ -371,6 +438,19 @@ public class ToolbarPresenter extends Presenter<ToolbarView> {
 
 		// Update color palette for the selected tool.
 		view.selectColorButton(toolType, settings);
+	}
+
+	private void handleRecordingStateError(Throwable e) {
+		Throwable cause = nonNull(e.getCause()) ? e.getCause().getCause() : null;
+
+		if (cause instanceof AudioDeviceNotConnectedException) {
+			var ex = (AudioDeviceNotConnectedException) cause;
+			showError("recording.start.error", "recording.start.device.error", ex.getDeviceName());
+			logException(e, "Start recording failed");
+		}
+		else {
+			handleException(e, "Start recording failed", "recording.start.error");
+		}
 	}
 
 	@Override
@@ -432,6 +512,7 @@ public class ToolbarPresenter extends Presenter<ToolbarView> {
 		view.bindEnableStreamCamera(config.getStreamConfig().enableCameraProperty());
 
 		view.setOnSelectQuiz(this::selectQuiz);
+		view.setOnAudienceMessage(this::showAudienceMessageTemplate);
 
 		// Register for page parameter change updates.
 		PresentationParameterProvider ppProvider = context.getPagePropertyProvider(ViewType.User);

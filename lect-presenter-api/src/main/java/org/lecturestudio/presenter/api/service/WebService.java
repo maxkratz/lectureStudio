@@ -21,12 +21,10 @@ package org.lecturestudio.presenter.api.service;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 import javax.inject.Inject;
-import javax.inject.Named;
 import javax.inject.Singleton;
 
 import org.lecturestudio.core.ExecutableBase;
@@ -34,7 +32,6 @@ import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.service.DocumentService;
-import org.lecturestudio.core.util.ProgressCallback;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.config.StreamConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
@@ -68,17 +65,11 @@ public class WebService extends ExecutableBase {
 
 	private final DocumentService documentService;
 
+	private final WebServiceInfo webServiceInfo;
+
 	private final List<FeatureServiceBase> startedServices;
 
 	private MessageTransport messageTransport;
-
-	@Inject
-	@Named("publisher.api.message.url")
-	private String publisherMessageApiUrl;
-
-	@Inject
-	@Named("stream.publisher.api.url")
-	private String streamPublisherApiUrl;
 
 	private Quiz lastQuiz;
 
@@ -86,10 +77,12 @@ public class WebService extends ExecutableBase {
 	@Inject
 	public WebService(ApplicationContext context,
 			DocumentService documentService,
-			LocalBroadcaster localBroadcaster) {
+			LocalBroadcaster localBroadcaster,
+			WebServiceInfo webServiceInfo) {
 		this.context = context;
 		this.documentService = documentService;
 		this.localBroadcaster = localBroadcaster;
+		this.webServiceInfo = webServiceInfo;
 		this.startedServices = new ArrayList<>();
 
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -124,8 +117,8 @@ public class WebService extends ExecutableBase {
 		try {
 			initMessageTransport();
 
-			startService(new MessageFeatureWebService(context,
-					createFeatureService(streamPublisherApiUrl,
+			startService(new MessageFeatureWebService((PresenterContext) context,
+					createFeatureService(webServiceInfo.getStreamPublisherApiUrl(),
 							MessageFeatureService.class)));
 		}
 		catch (Exception e) {
@@ -156,27 +149,6 @@ public class WebService extends ExecutableBase {
 	}
 
 	/**
-	 * Writes quiz results to the provided file paths. Each file may have its own
-	 * individual file format. If the file format is not supported, the file will
-	 * be skipped.
-	 *
-	 * @param files The files to write to with individual file formats.
-	 * @param callback The callback to be invoked on write progress.
-	 *
-	 * @throws IOException if the quiz results could not be written to the files.
-	 * @throws NullPointerException if no quiz service is running.
-	 */
-	public void saveQuizResult(List<String> files, ProgressCallback callback) throws IOException {
-		var service = getService(QuizFeatureWebService.class);
-
-		if (isNull(service)) {
-			throw new NullPointerException("Quiz service is not running");
-		}
-
-		service.saveQuizResult(files, callback);
-	}
-
-	/**
 	 * Starts the quiz service and the HTTP server if no message service is
 	 * running at that time.
 	 *
@@ -192,8 +164,8 @@ public class WebService extends ExecutableBase {
 			try {
 				initMessageTransport();
 
-				service = new QuizFeatureWebService(context,
-						createFeatureService(streamPublisherApiUrl,
+				service = new QuizFeatureWebService((PresenterContext) context,
+						createFeatureService(webServiceInfo.getStreamPublisherApiUrl(),
 								QuizFeatureService.class), documentService);
 			}
 			catch (Exception e) {
@@ -358,7 +330,7 @@ public class WebService extends ExecutableBase {
 
 	private MessageTransport createMessageTransport() {
 		ServiceParameters messageApiParameters = new ServiceParameters();
-		messageApiParameters.setUrl(publisherMessageApiUrl);
+		messageApiParameters.setUrl(webServiceInfo.getStreamMessageApiUrl());
 
 		PresenterContext pContext = (PresenterContext) context;
 		PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();

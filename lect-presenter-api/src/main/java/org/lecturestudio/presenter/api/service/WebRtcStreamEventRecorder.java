@@ -42,6 +42,7 @@ import org.lecturestudio.core.bus.event.PageEvent;
 import org.lecturestudio.core.bus.event.RecordActionEvent;
 import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.Page;
+import org.lecturestudio.core.model.TemplateDocument;
 import org.lecturestudio.core.recording.RecordedPage;
 import org.lecturestudio.core.recording.action.PlaybackAction;
 import org.lecturestudio.core.service.DocumentService;
@@ -144,11 +145,16 @@ public class WebRtcStreamEventRecorder extends StreamEventRecorder {
 
 	@Subscribe
 	public void onEvent(final RecordingStateEvent event) {
-		if (recordState == event.getState()) {
+		final ExecutableState state = event.getState();
+
+		if (recordState == state || state.name().contains("ing")) {
+			return;
+		}
+		if (event.started() && recordState == ExecutableState.Suspended) {
 			return;
 		}
 
-		recordState = event.getState();
+		recordState = state;
 
 		if (!started()) {
 			return;
@@ -184,20 +190,11 @@ public class WebRtcStreamEventRecorder extends StreamEventRecorder {
 		currentPage = event.getPage();
 
 		switch (event.getType()) {
-			case CREATED:
-				addPlaybackAction(new StreamPageCreatedAction(currentPage));
-				break;
-
-			case REMOVED:
-				addPlaybackAction(new StreamPageDeletedAction(currentPage));
-				break;
-
-			case SELECTED:
-				addPlaybackAction(new StreamPageSelectedAction(currentPage));
-				break;
-
-			default:
-				break;
+			case CREATED -> addPlaybackAction(new StreamPageCreatedAction(currentPage));
+			case REMOVED -> addPlaybackAction(new StreamPageDeletedAction(currentPage));
+			case SELECTED -> addPlaybackAction(new StreamPageSelectedAction(currentPage));
+			default -> {
+			}
 		}
 	}
 
@@ -375,10 +372,29 @@ public class WebRtcStreamEventRecorder extends StreamEventRecorder {
 	private StreamDocumentCreateAction uploadDocument(Document document)
 			throws IOException {
 		if (document.isWhiteboard()) {
-			return new StreamDocumentCreateAction(document);
+			if (!(document instanceof TemplateDocument)) {
+				// Do not send document data for plain whiteboards.
+				return new StreamDocumentCreateAction(document);
+			}
+			else {
+				// Copy whiteboard document.
+				ByteArrayOutputStream data = new ByteArrayOutputStream();
+
+				document.toOutputStream(data);
+
+				Document whiteboard = new TemplateDocument(data.toByteArray());
+				whiteboard.setTitle(document.getName());
+				whiteboard.setDocumentType(document.getType());
+
+				for (int i = 0; i < 100; i++) {
+					whiteboard.createPage();
+				}
+
+				document = whiteboard;
+			}
 		}
 
-		String docFileName = document.getName() + ".pdf";
+		String docFileName = document.getUid().toString() + ".pdf";
 		ByteArrayOutputStream docData = new ByteArrayOutputStream();
 
 		document.toOutputStream(docData);

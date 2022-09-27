@@ -33,24 +33,22 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.configuration.AudioConfiguration;
 import org.lecturestudio.core.audio.AudioDeviceNotConnectedException;
 import org.lecturestudio.core.audio.AudioFormat;
+import org.lecturestudio.core.audio.AudioFrame;
+import org.lecturestudio.core.audio.AudioMixer;
 import org.lecturestudio.core.audio.AudioSystemProvider;
 import org.lecturestudio.core.audio.AudioUtils;
 import org.lecturestudio.core.audio.bus.AudioBus;
-import org.lecturestudio.core.audio.sink.AudioSink;
 import org.lecturestudio.core.audio.sink.ProxyAudioSink;
-import org.lecturestudio.core.audio.sink.WavFileSink;
 import org.lecturestudio.core.bus.ApplicationBus;
 import org.lecturestudio.core.bus.event.DocumentEvent;
 import org.lecturestudio.core.bus.event.PageEvent;
@@ -76,8 +74,6 @@ import org.lecturestudio.presenter.api.event.RecordingStateEvent;
 
 public class FileLectureRecorder extends LectureRecorder {
 
-	private static final Logger LOG = LogManager.getLogger(FileLectureRecorder.class);
-
 	private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
 	private final Stack<RecordedPage> recordedPages = new Stack<>();
@@ -98,7 +94,7 @@ public class FileLectureRecorder extends LectureRecorder {
 
 	private AudioRecorder audioRecorder;
 
-	private AudioSink audioSink;
+	private AudioMixer audioMixer;
 
 	private AudioFormat audioFormat;
 
@@ -245,9 +241,24 @@ public class FileLectureRecorder extends LectureRecorder {
 		}
 	}
 
+	public void addPeerAudio(final AudioFrame frame) {
+		if (!started()) {
+			return;
+		}
+
+		audioMixer.addAudioFrame(frame);
+	}
+
 	@Override
 	protected void initInternal() {
 		pendingActions.initialize();
+
+		audioConfig.mixAudioStreamsProperty()
+				.addListener((o, oldValue, newValue) -> {
+					if (nonNull(audioMixer)) {
+						audioMixer.setMixAudio(newValue);
+					}
+				});
 
 		ApplicationBus.register(this);
 	}
@@ -272,13 +283,16 @@ public class FileLectureRecorder extends LectureRecorder {
 
 			backup.open();
 
-			// need to create a new sink
 			try {
-				audioSink = new WavFileSink(new File(backup.getAudioFile()));
-				audioSink.setAudioFormat(audioFormat);
+				audioMixer = new AudioMixer();
+				audioMixer.setAudioFormat(audioFormat);
+				audioMixer.setOutputFile(new File(backup.getAudioFile()));
+				audioMixer.setMixAudio(audioConfig.getMixAudioStreams());
+				audioMixer.init();
 			}
-			catch (IOException e) {
-				throw new ExecutableException("Could not create audio sink.", e);
+			catch (Exception e) {
+				logException(e, "Could not create audio mixer");
+				throw new ExecutableException("Could not create audio mixer", e);
 			}
 
 			try {
@@ -292,6 +306,13 @@ public class FileLectureRecorder extends LectureRecorder {
 				audioRecorder.destroy();
 			}
 
+			try {
+				audioMixer.start();
+			}
+			catch (Exception e) {
+				logException(e, "Could not start audio mixer");
+			}
+
 			Double deviceVolume = audioConfig.getRecordingVolume(deviceName);
 			double masterVolume = audioConfig.getMasterRecordingVolume();
 			double volume = nonNull(deviceVolume) ? deviceVolume : masterVolume;
@@ -301,7 +322,7 @@ public class FileLectureRecorder extends LectureRecorder {
 					audioConfig.getRecordingProcessingSettings());
 			audioRecorder.setAudioDeviceName(deviceName);
 			audioRecorder.setAudioVolume(volume);
-			audioRecorder.setAudioSink(new ProxyAudioSink(audioSink) {
+			audioRecorder.setAudioSink(new ProxyAudioSink(audioMixer) {
 
 				@Override
 				public int write(byte[] data, int offset, int length)
@@ -341,6 +362,13 @@ public class FileLectureRecorder extends LectureRecorder {
 			audioRecorder.stop();
 		}
 
+		try {
+			audioMixer.stop();
+		}
+		catch (Exception e) {
+			logException(e, "Close audio mixer failed");
+		}
+
 		backup.close();
 
 		bytesConsumed = 0;
@@ -358,6 +386,13 @@ public class FileLectureRecorder extends LectureRecorder {
 	@Override
 	protected void destroyInternal() {
 		ApplicationBus.unregister(this);
+
+		try {
+			audioMixer.destroy();
+		}
+		catch (Exception e) {
+			logException(e, "Destroy audio mixer failed");
+		}
 
 		clear();
 	}
@@ -472,7 +507,7 @@ public class FileLectureRecorder extends LectureRecorder {
 					recordedDocument.createPage(page);
 				}
 				catch (Exception e) {
-					LOG.error("Create page failed", e);
+					logException(e, "Create page failed");
 					return;
 				}
 
@@ -483,8 +518,13 @@ public class FileLectureRecorder extends LectureRecorder {
 				recordedPages.push(recPage);
 
 				// Write backup.
-				backup.writeDocument(recordedDocument);
-				backup.writePages(recordedPages);
+				try {
+					backup.writeDocument(recordedDocument);
+					backup.writePages(recordedPages);
+				}
+				catch (Throwable e) {
+					logException(e, "Write backup failed");
+				}
 			}
 		}, executor).join();
 	}
@@ -511,7 +551,20 @@ public class FileLectureRecorder extends LectureRecorder {
 	}
 
 	private boolean isDuplicate(Page page) {
-		return page.equals(getLastRecordedPage());
+		Page lastRecorded = getLastRecordedPage();
+		boolean same = page.equals(lastRecorded);
+
+		if (!same) {
+			UUID lastId = lastRecorded.getUid();
+			UUID pageId = page.getUid();
+
+			if (nonNull(lastId) && nonNull(pageId) && lastId.equals(pageId)) {
+				// Do not record duplicate pages.
+				same = true;
+			}
+		}
+
+		return same;
 	}
 
 	private boolean hasRecordingDevice(String deviceName) {

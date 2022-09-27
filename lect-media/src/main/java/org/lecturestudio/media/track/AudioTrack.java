@@ -18,7 +18,11 @@
 
 package org.lecturestudio.media.track;
 
+import static java.util.Objects.isNull;
+
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import org.lecturestudio.core.io.RandomAccessAudioStream;
 import org.lecturestudio.core.recording.RecordingChangeEvent;
@@ -43,18 +47,29 @@ public class AudioTrack extends MediaTrackBase<RandomAccessAudioStream> {
 
 	@Override
 	public void setData(RandomAccessAudioStream stream) {
-		try {
-			waveformData = waveformBuilder.build(stream.getAudioFormat(), stream.clone(), 30000);
-		}
-		catch (IOException e) {
-			LOG.error("Create waveform data failed", e);
-		}
+		CompletableFuture.runAsync(() -> {
+			try {
+				waveformData = waveformBuilder.build(stream.getAudioFormat(),
+						stream.clone(), 30000);
 
-		super.setData(stream);
+				super.setData(stream);
+			}
+			catch (Throwable e) {
+				throw new CompletionException("Create waveform data failed", e);
+			}
+		})
+		.exceptionally((e -> {
+			LOG.error("Create waveform data failed", e);
+			return null;
+		}));
 	}
 
 	@Override
 	public void dispose() {
+		if (isNull(getData())) {
+			return;
+		}
+
 		try {
 			getData().close();
 		}

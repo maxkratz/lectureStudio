@@ -218,7 +218,8 @@ public class RecordingBackup {
 		Path dir = Paths.get(backupDir);
 		
 		// Read the recording directory by filtering the required extensions.
-		try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.{dat,pdf,wav}")) {
+		try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir,
+				"*.{dat,pdf,wav}")) {
 			for (Path entry : stream) {
 				Files.deleteIfExists(entry);
 			}
@@ -234,7 +235,8 @@ public class RecordingBackup {
 
 	private void initBackupDir(File dir) throws IOException {
 		if (!dir.exists() && !dir.mkdirs()) {
-			throw new IOException("Couldn't create backup directory: " + dir.getAbsolutePath());
+			throw new IOException("Couldn't create backup directory: "
+					+ dir.getAbsolutePath());
 		}
 	}
 

@@ -18,14 +18,10 @@
 
 package org.lecturestudio.presenter.api.service;
 
-import java.io.File;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.function.Consumer;
 
 import org.lecturestudio.core.ExecutableException;
-import org.lecturestudio.core.app.ApplicationContext;
-import org.lecturestudio.presenter.api.util.HtmlMessageLogger;
+import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.web.api.message.MessengerMessage;
 
 public class MessageFeatureWebService extends FeatureServiceBase {
@@ -36,9 +32,6 @@ public class MessageFeatureWebService extends FeatureServiceBase {
 	/** The web service client. */
 	private final MessageFeatureService webService;
 
-	/** A message logger. */
-	private HtmlMessageLogger logger;
-
 
 	/**
 	 * Creates a new {@link MessageFeatureWebService}.
@@ -46,7 +39,7 @@ public class MessageFeatureWebService extends FeatureServiceBase {
 	 * @param context        The application context.
 	 * @param featureService The message web feature service.
 	 */
-	public MessageFeatureWebService(ApplicationContext context,
+	public MessageFeatureWebService(PresenterContext context,
 			MessageFeatureService featureService) {
 		super(context);
 
@@ -68,8 +61,6 @@ public class MessageFeatureWebService extends FeatureServiceBase {
 		catch (Exception e) {
 			throw new ExecutableException(e);
 		}
-
-		createLogFile();
 	}
 
 	@Override
@@ -91,33 +82,7 @@ public class MessageFeatureWebService extends FeatureServiceBase {
 	}
 
 	private void onMessage(MessengerMessage message) {
-		logMessage(message);
-
-		// Forward message to UI.
+		// Forward message to interested recipients.
 		context.getEventBus().post(message);
-	}
-
-	/**
-	 * Creates a new log file. The log file is parsed and written in the HTML
-	 * format.
-	 */
-	private void createLogFile() {
-		SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy-HH.mm");
-		String date = dateFormat.format(new Date());
-
-		String name = date + ".html";
-		File messengerLog = new File(context.getDataLocator().toAppDataPath(name));
-
-		logger = new HtmlMessageLogger(messengerLog);
-	}
-
-	/**
-	 * Adds a message to the log file.
-	 *
-	 * @param message The descriptive message.
-	 */
-	private void logMessage(MessengerMessage message) {
-		logger.logMessage(message.getRemoteAddress(), message.getDate(),
-				message.getMessage().getText());
 	}
 }

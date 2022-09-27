@@ -28,14 +28,13 @@ import org.lecturestudio.core.audio.AudioProcessingSettings;
 import org.lecturestudio.core.audio.AudioProcessingSettings.NoiseSuppressionLevel;
 import org.lecturestudio.core.geometry.Dimension2D;
 import org.lecturestudio.core.geometry.Position;
+import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.graphics.Color;
 import org.lecturestudio.core.text.Font;
 import org.lecturestudio.core.text.TeXFont;
 import org.lecturestudio.core.text.TextAttributes;
 import org.lecturestudio.core.tool.PresetColor;
 import org.lecturestudio.presenter.api.model.MessageBarPosition;
-import org.lecturestudio.web.api.filter.RegexFilter;
-import org.lecturestudio.web.api.filter.RegexRule;
 
 public class DefaultConfiguration extends PresenterConfiguration {
 
@@ -49,22 +48,19 @@ public class DefaultConfiguration extends PresenterConfiguration {
 		setStartMaximized(true);
 		setTabletMode(false);
 		setSaveDocumentOnClose(true);
-		setClassroomName("Presenter Classroom");
-		setClassroomShortName("");
-		setAdvancedUIMode(false);
+		setAdvancedUIMode(true);
 		setExtendedFullscreen(true);
 		setNotifyToRecord(false);
 		setConfirmStopRecording(true);
 		setPageRecordingTimeout(2000);
 
-		getGridConfig().setVerticalLinesVisible(true);
-		getGridConfig().setVerticalLinesInterval(0.5);
-		getGridConfig().setHorizontalLinesVisible(true);
-		getGridConfig().setHorizontalLinesInterval(0.5);
-		getGridConfig().setColor(new Color(230, 230, 230));
-		getGridConfig().setShowGridOnDisplays(false);
-
 		getWhiteboardConfig().setBackgroundColor(Color.WHITE);
+		getWhiteboardConfig().setVerticalLinesVisible(true);
+		getWhiteboardConfig().setVerticalLinesInterval(0.5);
+		getWhiteboardConfig().setHorizontalLinesVisible(true);
+		getWhiteboardConfig().setHorizontalLinesInterval(0.5);
+		getWhiteboardConfig().setGridColor(new Color(230, 230, 230));
+		getWhiteboardConfig().setShowGridOnDisplays(false);
 
 		getDisplayConfig().setAutostart(false);
 		getDisplayConfig().setBackgroundColor(Color.WHITE);
@@ -116,21 +112,20 @@ public class DefaultConfiguration extends PresenterConfiguration {
 		getAudioConfig().setRecordingFormat(new AudioFormat(AudioFormat.Encoding.S16LE, 44100, 1));
 		getAudioConfig().setRecordingPath(System.getProperty("user.home"));
 		getAudioConfig().setRecordingProcessingSettings(processingSettings);
+		getAudioConfig().setPlaybackVolume(1.0);
 		getAudioConfig().setDefaultRecordingVolume(1.0f);
 		getAudioConfig().setMasterRecordingVolume(1.0f);
+		getAudioConfig().setMixAudioStreams(false);
 
+		getStreamConfig().setServerName("lect.stream");
 		getStreamConfig().setAudioCodec("OPUS");
 		getStreamConfig().setAudioFormat(new AudioFormat(AudioFormat.Encoding.S16LE, 24000, 1));
 		getStreamConfig().getCameraCodecConfig().setBitRate(200);
 		getStreamConfig().getCameraCodecConfig().setPreset("ultrafast");
 		getStreamConfig().getCameraCodecConfig().setFrameRate(30);
 
-		RegexFilter inputFilter = new RegexFilter();
-		inputFilter.registerRule(new RegexRule("^(1337)+"));
-		inputFilter.registerRule(new RegexRule("^(42)+"));
-		inputFilter.registerRule(new RegexRule("^(666)+"));
-
-		getQuizConfig().setInputFilter(inputFilter);
+		getTemplateConfig().getQuizTemplateConfig().setBounds(new Rectangle2D(0.05, 0.05, 0.9, 0.9));
+		getTemplateConfig().getChatMessageTemplateConfig().setBounds(new Rectangle2D(0.05, 0.05, 0.9, 0.9));
 	}
 
 }

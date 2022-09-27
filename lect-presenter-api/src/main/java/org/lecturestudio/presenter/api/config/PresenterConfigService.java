@@ -18,17 +18,16 @@
 
 package org.lecturestudio.presenter.api.config;
 
+import static java.util.Objects.isNull;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 
 import org.lecturestudio.core.app.configuration.JsonConfigurationService;
-import org.lecturestudio.presenter.api.model.bind.FilterRuleMixIn;
-import org.lecturestudio.presenter.api.model.bind.IpRangeRuleMixIn;
-import org.lecturestudio.presenter.api.model.bind.MinMaxRuleMixIn;
-import org.lecturestudio.presenter.api.model.bind.RegexRuleMixIn;
-import org.lecturestudio.web.api.filter.FilterRule;
+import org.lecturestudio.core.geometry.Rectangle2D;
+import org.lecturestudio.presenter.api.model.bind.IpRangeRuleDeserializer;
+import org.lecturestudio.presenter.api.model.bind.RegexRuleDeserializer;
 import org.lecturestudio.web.api.filter.IpRangeRule;
-import org.lecturestudio.web.api.filter.MinMaxRule;
 import org.lecturestudio.web.api.filter.RegexRule;
 
 public class PresenterConfigService extends JsonConfigurationService<PresenterConfiguration> {
@@ -36,12 +35,40 @@ public class PresenterConfigService extends JsonConfigurationService<PresenterCo
 	@Override
 	protected void initModules(ObjectMapper mapper) {
 		SimpleModule module = new SimpleModule();
-		module.setMixInAnnotation(FilterRule.class, FilterRuleMixIn.class);
-		module.setMixInAnnotation(RegexRule.class, RegexRuleMixIn.class);
-		module.setMixInAnnotation(MinMaxRule.class, MinMaxRuleMixIn.class);
-		module.setMixInAnnotation(IpRangeRule.class, IpRangeRuleMixIn.class);
+		module.addDeserializer(RegexRule.class, new RegexRuleDeserializer());
+		module.addDeserializer(IpRangeRule.class, new IpRangeRuleDeserializer());
 
 		mapper.registerModule(module);
 	}
 
+	@Override
+	public void validate(PresenterConfiguration config) {
+		DefaultConfiguration defaultConfig = new DefaultConfiguration();
+
+		if (isNull(config.getApplicationName())) {
+			config.setApplicationName(defaultConfig.getApplicationName());
+		}
+		if (isNull(config.getLocale())) {
+			config.setLocale(defaultConfig.getLocale());
+		}
+		if (isNull(config.getStreamConfig().getServerName())) {
+			config.getStreamConfig().setServerName(defaultConfig
+					.getStreamConfig().getServerName());
+		}
+
+		config.getTemplateConfig().getAll().forEach(this::checkBoundsValid);
+	}
+
+	private void checkBoundsValid(DocumentTemplateConfiguration tplConfig) {
+		Rectangle2D bounds = tplConfig.getBounds();
+
+		if (isNull(bounds)) {
+			return;
+		}
+
+		if (bounds.getX() > 1 || bounds.getY() > 1 || bounds.getWidth() > 1
+				|| bounds.getHeight() > 1) {
+			tplConfig.setBounds(new DocumentTemplateConfiguration().getBounds());
+		}
+	}
 }

@@ -37,6 +37,7 @@ import org.lecturestudio.core.util.ListChangeListener;
 import org.lecturestudio.core.util.ObservableList;
 import org.lecturestudio.core.view.FileChooserView;
 import org.lecturestudio.core.view.ViewContextFactory;
+import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.presenter.api.view.StartView;
 
@@ -64,7 +65,11 @@ public class StartPresenter extends Presenter<StartView> {
 	}
 
 	public void openWhiteboard() {
-		documentService.addWhiteboard();
+		PresenterConfiguration config = (PresenterConfiguration) context.getConfiguration();
+		String template = config.getTemplateConfig()
+				.getWhiteboardTemplateConfig().getTemplatePath();
+
+		documentService.addWhiteboard(template);
 	}
 
 	public void openRecentDocument(RecentDocument doc) {
