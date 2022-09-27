@@ -1,4 +1,4 @@
-FROM adoptopenjdk/openjdk16:debian
+FROM adoptopenjdk/openjdk14:debian
 LABEL maintainer="Maximilian Kratz <account@maxkratz.com>"
 
 # Update package of base system
