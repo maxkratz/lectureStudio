@@ -51,4 +51,4 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: lecturestudio-build-windows
-          path: target/lectureStudio-*.zip
+          path: lect-packager/lect-jpackage/*
