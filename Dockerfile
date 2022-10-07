@@ -29,8 +29,8 @@ ENV MAVEN_HOME /usr/share/maven
 
 # ---
 # Temporary hack to resolve missing webrtc-java dependency
-RUN mkdir -p /usr/share/maven/.m2/repository/dev/onvoid/webrtc
-COPY lib/mvn/ /usr/share/maven/.m2/repository/dev/onvoid/webrtc/
+RUN mkdir -p /root/.m2/repository/dev/onvoid/webrtc
+COPY lib/mvn/ /root/.m2/repository/dev/onvoid/webrtc/
 # ---
 
 # Install python requirements
