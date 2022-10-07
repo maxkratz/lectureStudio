@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - 'feature/**'
+      - 'testing/**'
     # Run pipeline for release tags
     #tags:
     #  - 'v*.*.*'

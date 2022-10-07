@@ -27,6 +27,12 @@ RUN ln -s /usr/share/maven/bin/mvn /usr/bin/mvn
 
 ENV MAVEN_HOME /usr/share/maven
 
+# ---
+# Temporary hack to resolve missing webrtc-java dependency
+RUN mkdir -p /usr/share/maven/.m2/repository/dev/onvoid/webrtc
+COPY lib/mvn/ /usr/share/maven/.m2/repository/dev/onvoid/webrtc/
+# ---
+
 # Install python requirements
 RUN apt-get install -yq \
     python3

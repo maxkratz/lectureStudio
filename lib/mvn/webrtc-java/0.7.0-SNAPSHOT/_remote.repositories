@@ -1,0 +1,5 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Fri Oct 07 11:37:31 UTC 2022
+webrtc-java-0.7.0-SNAPSHOT-linux-x86_64.jar>=
+webrtc-java-0.7.0-SNAPSHOT.jar>=
+webrtc-java-0.7.0-SNAPSHOT.pom>=
