@@ -46,8 +46,17 @@ jobs:
           choco install wget curl unzip zip --no-progress
       - name: Check out repository code
         uses: actions/checkout@v2
+      # ---
+      # Temporary hack to resolve missing webrtc-java dependency
+      - name: Create folder
+        run: |
+          New-Item -ItemType Directory -Force -Path .\m2\repository\dev\onvoid\webrtc
+      - name: Inject missing webrtc-java dependency
+        run: |
+          cp -r ./lib/mvn/* .\m2\repository\dev\onvoid\webrtc\
+      # ---
       - name: Build lectureStudio
-        run: mvn install -DskipTests --no-transfer-progress -P !package:msi
+        run: bash -c 'mvn install -DskipTests --no-transfer-progress -P !package:msi -Dmaven.repo.local="${PWD}/m2/repository"'
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
