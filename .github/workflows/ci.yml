@@ -54,7 +54,6 @@ jobs:
       - name: Inject missing webrtc-java dependency
         run: |
           cp -r ./lib/mvn-win/* .\m2\repository\dev\onvoid\webrtc\
-          ls D:\a\lectureStudio\lectureStudio\m2\repository\dev\onvlid\webrtc\
       # ---
       - name: Build lectureStudio
         run: bash -c 'mvn install -DskipTests --no-transfer-progress -P !package:msi -Dmaven.repo.local="${PWD}/m2/repository"'
