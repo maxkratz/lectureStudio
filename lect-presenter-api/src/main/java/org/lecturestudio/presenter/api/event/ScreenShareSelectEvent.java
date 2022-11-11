@@ -16,21 +16,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package org.lecturestudio.presenter.api.net;
+package org.lecturestudio.presenter.api.event;
 
-/**
- * Default screen-share profile collection.
- *
- * @author Alex Andres
- */
-public class ScreenShareProfiles {
+import org.lecturestudio.core.bus.event.BusEvent;
 
-	public static ScreenShareProfile STILL = new ScreenShareProfile(
-			ScreenShareProfileType.STILL, 2000, 3);
-
-	public static ScreenShareProfile MOTION = new ScreenShareProfile(
-			ScreenShareProfileType.MOTION, 2000, 24);
-
-	public static final ScreenShareProfile[] DEFAULT = { STILL, MOTION };
+public class ScreenShareSelectEvent extends BusEvent {
 
 }

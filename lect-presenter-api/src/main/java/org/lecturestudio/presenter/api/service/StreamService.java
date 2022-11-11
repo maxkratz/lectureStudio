@@ -30,14 +30,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import org.lecturestudio.core.ExecutableException;
+import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.bus.EventBus;
 import org.lecturestudio.core.presenter.command.NotificationCommand;
 import org.lecturestudio.core.util.NetUtils;
 import org.lecturestudio.core.view.NotificationType;
 import org.lecturestudio.presenter.api.context.PresenterContext;
+import org.lecturestudio.presenter.api.model.ScreenShareContext;
 import org.lecturestudio.presenter.api.presenter.command.StartCourseFeatureCommand;
 import org.lecturestudio.presenter.api.presenter.command.StartStreamCommand;
-import org.lecturestudio.web.api.model.ScreenSource;
 import org.lecturestudio.web.api.model.quiz.Quiz;
 import org.lecturestudio.web.api.stream.model.Course;
 
@@ -73,12 +74,12 @@ public class StreamService {
 		}
 	}
 
-	public ScreenSource getScreenSource() {
-		return streamService.getScreenSource();
+	public void setScreenShareContext(ScreenShareContext context) {
+		streamService.setScreenShareContext(context);
 	}
 
-	public void setScreenSource(ScreenSource screenSource) {
-		streamService.setScreenSource(screenSource);
+	public ExecutableState getScreenShareState() {
+		return streamService.getScreenShareState();
 	}
 
 	public void enableScreenSharing(boolean enable) {

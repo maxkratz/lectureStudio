@@ -126,16 +126,7 @@ public class PresentationWindow extends AbstractWindow implements SlidePresentat
 	@Override
 	public void setVisible(boolean visible) {
 		if (visible) {
-			Page page = getPage();
-
-			if (nonNull(page)) {
-				centerSlideView();
-
-				PresentationParameterProvider paramProvider = getContext()
-						.getPagePropertyProvider(ViewType.Presentation);
-
-				updateSlideView(page, paramProvider.getParameter(page));
-			}
+			updateSlidePage();
 		}
 
 		super.setVisible(visible);
@@ -170,6 +161,8 @@ public class PresentationWindow extends AbstractWindow implements SlidePresentat
 
 				contentPane.remove(screenView);
 				contentPane.add(slideView);
+
+				updateSlidePage();
 			}
 			case SCREEN -> {
 				context.configure(screenView);
@@ -237,6 +230,19 @@ public class PresentationWindow extends AbstractWindow implements SlidePresentat
 		getWindow().getContentPane().add(slideView);
 
 		ApplicationBus.register(this);
+	}
+
+	private void updateSlidePage() {
+		Page page = getPage();
+
+		if (nonNull(page)) {
+			centerSlideView();
+
+			PresentationParameterProvider paramProvider = getContext()
+					.getPagePropertyProvider(ViewType.Presentation);
+
+			updateSlideView(page, paramProvider.getParameter(page));
+		}
 	}
 
 	private void updateSlideView(Page page, PresentationParameter parameter) {

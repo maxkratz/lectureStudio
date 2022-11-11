@@ -19,13 +19,19 @@
 package org.lecturestudio.core.model;
 
 import java.awt.Color;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 
+import org.lecturestudio.core.PageMetrics;
+import org.lecturestudio.core.geometry.Dimension2D;
 import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.pdf.pdfbox.PDFGraphics2D;
 
 public class ScreenDocument extends Document {
+
+	private static final int PADDING = 10;
+
 
 	public ScreenDocument() throws IOException {
 		super();
@@ -45,15 +51,40 @@ public class ScreenDocument extends Document {
 
 		Rectangle2D rect = page.getPageRect();
 
-		int x = (int) ((rect.getWidth() - image.getWidth(null)) / 2);
-		int y = (int) ((rect.getHeight() - image.getHeight(null)) / 2);
-		int w = (int) rect.getWidth();
-		int h = (int) rect.getHeight();
+		double imageWidth = image.getWidth();
+		double imageHeight = image.getHeight();
+		double pageWidth = rect.getWidth() - PADDING * 2;
+		double pageHeight = rect.getHeight() - PADDING * 2;
 
-		PDFGraphics2D g2d = (PDFGraphics2D) getPdfDocument().createPageGraphics2D(pageIndex);
-		// Draw screen frame onto a black page background.
+		PageMetrics metrics = new PageMetrics(pageWidth, pageHeight);
+		Dimension2D size = metrics.convert(imageWidth, imageHeight);
+
+		double s = pageWidth / imageWidth;
+
+		if (imageHeight > size.getHeight()) {
+			s = pageHeight / imageHeight;
+		}
+
+		double sInv = 1 / s;
+
+		int x = (int) (((pageWidth - imageWidth * s) / 2 + PADDING) * sInv);
+		int y = (int) (((pageHeight - imageHeight * s) / 2 + PADDING) * sInv);
+		int w = (int) imageWidth;
+		int h = (int) imageHeight;
+
+		try {
+			getPdfDocument().setPageContentTransform(pageIndex, AffineTransform.getScaleInstance(s, s));
+		}
+		catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+
+		int padding = (int) (PADDING * s);
+
+		PDFGraphics2D g2d = (PDFGraphics2D) getPdfDocument().createAppendablePageGraphics2D(pageIndex);
+		// Draw screen frame with a border around it.
 		g2d.setColor(Color.BLACK);
-		g2d.fillRect(0, 0, w, h);
+		g2d.drawRect(x - padding, y - padding, w + padding * 2, h + padding * 2);
 		g2d.drawImage(image, x, y, null);
 		g2d.close();
 		g2d.dispose();

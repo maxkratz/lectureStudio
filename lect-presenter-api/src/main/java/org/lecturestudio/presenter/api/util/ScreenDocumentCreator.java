@@ -28,14 +28,13 @@ import dev.onvoid.webrtc.media.video.desktop.WindowCapturer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
 import org.lecturestudio.core.geometry.Dimension2D;
 import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.ScreenDocument;
 import org.lecturestudio.core.service.DocumentService;
-import org.lecturestudio.presenter.api.model.ScreenSourceVideoFrame;
+import org.lecturestudio.swing.util.VideoFrameConverter;
 import org.lecturestudio.web.api.model.ScreenSource;
 
 public class ScreenDocumentCreator {
@@ -47,7 +46,7 @@ public class ScreenDocumentCreator {
 
 		// Search for a possibly existing screen-document.
 		for (Document doc : documentService.getDocuments().asList()) {
-			if (doc.isScreen()) {
+			if (doc.getTitle().equals(screenSource.getTitle())) {
 				screenDoc = (ScreenDocument) doc;
 				found = true;
 				break;
@@ -80,15 +79,12 @@ public class ScreenDocumentCreator {
 
 		desktopCapturer.selectSource(desktopSource);
 		desktopCapturer.start((result, desktopFrame) -> {
-			ScreenSourceVideoFrame videoFrame = new ScreenSourceVideoFrame(
-					desktopFrame.frameRect, desktopFrame.frameSize,
-					desktopFrame.stride, cloneByteBuffer(desktopFrame.buffer));
-
-			doc.createPage(ScreenFrameConverter.createBufferedImage(videoFrame,
-					(int) doc.getPageSize().getWidth(),
-					(int) doc.getPageSize().getHeight()));
-
 			try {
+				doc.createPage(VideoFrameConverter.convertVideoFrame(desktopFrame,
+						null,
+						(int) (doc.getPageSize().getWidth() * 3),
+						(int) (doc.getPageSize().getHeight() * 3)));
+
 				ByteArrayOutputStream stream = new ByteArrayOutputStream();
 
 				doc.toOutputStream(stream);
@@ -101,7 +97,7 @@ public class ScreenDocumentCreator {
 				newDoc.selectPage(newDoc.getPageCount() - 1);
 
 				if (exists) {
-					documentService.replaceDocument(doc, newDoc);
+					documentService.replaceDocument(doc, newDoc, true);
 
 					// Do not close replaced document, since its pages cannot be saved later.
 				}
@@ -120,16 +116,5 @@ public class ScreenDocumentCreator {
 		});
 		desktopCapturer.captureFrame();
 		//desktopCapturer.dispose();
-	}
-
-	private static ByteBuffer cloneByteBuffer(final ByteBuffer original) {
-		final ByteBuffer clone = (original.isDirect()) ?
-				ByteBuffer.allocateDirect(original.capacity()) :
-				ByteBuffer.allocate(original.capacity());
-
-		clone.put(original);
-		clone.rewind();
-
-		return clone;
 	}
 }

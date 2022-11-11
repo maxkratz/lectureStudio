@@ -224,6 +224,8 @@ public class WebRtcStreamEventRecorder extends StreamEventRecorder {
 		}
 		else if (event.closed()) {
 			action = new StreamDocumentCloseAction(doc);
+
+			removeActionsForDocument(doc);
 		}
 		else if (event.selected()) {
 			currentPage = doc.getCurrentPage();
@@ -231,16 +233,12 @@ public class WebRtcStreamEventRecorder extends StreamEventRecorder {
 			action = new StreamDocumentSelectAction(doc);
 		}
 		else if (event.replaced()) {
-			if (doc.isMessage() || doc.isScreen()) {
-				try {
-					shareDocument(doc);
-				}
-				catch (IOException e) {
-					logException(e, "Transmit document failed");
-				}
-			}
-			if (doc.isQuiz() && doc.getPageCount() == 1) {
-				// Transmit quiz documents only in initial state.
+			removeActionsForDocument(event.getOldDocument());
+
+			// Transmit quiz documents only in initial state.
+			boolean isInitialQuiz = doc.isQuiz() && doc.getPageCount() == 1;
+
+			if (isInitialQuiz || doc.isMessage() || doc.isScreen()) {
 				try {
 					shareDocument(doc);
 				}

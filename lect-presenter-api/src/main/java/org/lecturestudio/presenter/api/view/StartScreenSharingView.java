@@ -23,6 +23,8 @@ import org.lecturestudio.core.util.ObservableList;
 import org.lecturestudio.core.view.Action;
 import org.lecturestudio.core.view.View;
 import org.lecturestudio.presenter.api.model.SharedScreenSource;
+import org.lecturestudio.presenter.api.net.ScreenShareProfile;
+import org.lecturestudio.web.api.model.ScreenSource;
 
 public interface StartScreenSharingView extends View {
 
@@ -30,7 +32,11 @@ public interface StartScreenSharingView extends View {
 
 	void setScreens(ObservableList<SharedScreenSource> screens);
 
-	void bindScreenSource(ObjectProperty<SharedScreenSource> sourceProperty);
+	void bindScreenSource(ObjectProperty<ScreenSource> sourceProperty);
+
+	void bindScreenShareProfile(ObjectProperty<ScreenShareProfile> profile);
+
+	void setScreenShareProfiles(ScreenShareProfile[] profiles);
 
 	void setOnClose(Action action);
 

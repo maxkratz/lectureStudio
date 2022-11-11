@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 import javax.inject.Inject;
@@ -74,12 +75,16 @@ import org.lecturestudio.presenter.api.config.StreamConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.presenter.api.event.MessengerStateEvent;
 import org.lecturestudio.presenter.api.event.QuizStateEvent;
+import org.lecturestudio.presenter.api.event.ScreenShareEndEvent;
+import org.lecturestudio.presenter.api.event.ScreenShareSelectEvent;
 import org.lecturestudio.presenter.api.event.StreamingStateEvent;
 import org.lecturestudio.presenter.api.input.Shortcut;
+import org.lecturestudio.presenter.api.model.ScreenShareContext;
 import org.lecturestudio.presenter.api.presenter.command.StartScreenSharingCommand;
 import org.lecturestudio.presenter.api.recording.RecordingBackup;
 import org.lecturestudio.presenter.api.service.BookmarkService;
 import org.lecturestudio.presenter.api.service.RecordingService;
+import org.lecturestudio.presenter.api.service.ScreenSourceService;
 import org.lecturestudio.presenter.api.service.StreamService;
 import org.lecturestudio.presenter.api.util.SaveDocumentsHandler;
 import org.lecturestudio.presenter.api.util.SaveRecordingHandler;
@@ -87,7 +92,6 @@ import org.lecturestudio.presenter.api.util.ScreenDocumentCreator;
 import org.lecturestudio.presenter.api.view.MainView;
 import org.lecturestudio.web.api.exception.StreamMediaException;
 import org.lecturestudio.web.api.model.GitHubRelease;
-import org.lecturestudio.web.api.model.ScreenSource;
 import org.lecturestudio.web.api.service.VersionChecker;
 
 public class MainPresenter extends org.lecturestudio.core.presenter.MainPresenter<MainView> implements ViewHandler {
@@ -114,6 +118,8 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 
 	private final StreamService streamService;
 
+	private final ScreenSourceService screenSourceService;
+
 	private SlidesPresenter slidesPresenter;
 
 	/** The waiting notification. */
@@ -138,6 +144,7 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 		this.bookmarkService = bookmarkService;
 		this.recordingService = recordingService;
 		this.streamService = streamService;
+		this.screenSourceService = new ScreenSourceService();
 		this.viewMap = new ObservableHashMap<>();
 		this.shortcutMap = new HashMap<>();
 		this.contexts = new ArrayList<>();
@@ -167,46 +174,42 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 
 		presenterContext.streamStartedProperty().addListener((o, oldValue, newValue) -> {
 			streamService.enableStream(newValue);
-		});
-		presenterContext.screenSharingStartProperty().addListener((o, oldValue, newValue) -> {
+
 			if (!newValue) {
-				return;
+				// Stop screen-share as well.
+				streamService.enableScreenSharing(false);
 			}
-
-			context.getEventBus()
-				.post(new StartScreenSharingCommand((screenSource) -> {
-					CompletableFuture.runAsync(() -> {
-						var source = new ScreenSource(screenSource.getTitle(),
-								screenSource.getId(), screenSource.isWindow());
-
-						streamService.setScreenSource(source);
-
-						try {
-							ScreenDocumentCreator.create(documentService, source);
-						}
-						catch (IOException e) {
-							throw new RuntimeException(e);
-						}
-					})
-					.exceptionally(e -> {
-						handleException(e, "Set screen-source failed",
-								"stream.screen.share.error");
-						return null;
-					});
-				}));
 		});
 		presenterContext.screenSharingStartedProperty().addListener((o, oldValue, newValue) -> {
-			streamService.enableScreenSharing(newValue);
+			Document selectedDoc = documentService.getDocuments().getSelectedDocument();
+			ScreenShareContext shareContext = screenSourceService.getScreenShareContext(selectedDoc);
 
 			if (!newValue) {
-				try {
-					ScreenDocumentCreator.create(documentService,
-							streamService.getScreenSource());
-				}
-				catch (Exception e) {
-					throw new RuntimeException(e);
+				// Only update documents with screen dumps if the service is active.
+				if (streamService.getScreenShareState() == ExecutableState.Started) {
+					try {
+						ScreenDocumentCreator.create(documentService, shareContext.getSource());
+
+						selectedDoc = documentService.getDocuments().getSelectedDocument();
+
+						// Register the newly created document with the source.
+						screenSourceService.addScreenShareContext(selectedDoc, shareContext);
+					}
+					catch (Error e) {
+						// Select screen source failed.
+						// Which in this case is not too critical, since the source may be minimized.
+					}
+					catch (Exception e) {
+						logException(e, "Create screen-document failed");
+					}
 				}
 			}
+			else {
+				// Set the screen source related to the selected screen document.
+				streamService.setScreenShareContext(shareContext);
+			}
+
+			streamService.enableScreenSharing(newValue);
 		});
 		presenterContext.messengerStartedProperty().addListener((o, oldValue, newValue) -> {
 			streamService.enableMessenger(newValue);
@@ -260,6 +263,7 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 		view.setMenuVisible(!config.getExtendedFullscreen());
 		view.setOnClose(this::closeWindow);
 		view.setOnShown(this::onViewShown);
+		view.setOnFocus(this::onViewFocus);
 		view.setOnBounds(this::onViewBounds);
 		view.setOnKeyEvent(this::keyEvent);
 
@@ -383,6 +387,9 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 		else if (event.closed()) {
 			documentClosed(doc);
 		}
+		else if (event.selected()) {
+			documentSelected();
+		}
 	}
 
 	@Subscribe
@@ -431,9 +438,56 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 			PresenterContext presenterContext = (PresenterContext) context;
 			presenterContext.setAttendeesCount(0);
 			presenterContext.getSpeechRequests().clear();
+
+			screenSourceService.clear();
 		}
 		else if (state == ExecutableState.Error) {
 			showError("stream.closed.by.remote.host.title", "stream.closed.by.remote.host");
+		}
+	}
+
+	@Subscribe
+	public void onEvent(final ScreenShareSelectEvent event) {
+		context.getEventBus()
+			.post(new StartScreenSharingCommand((context) -> {
+				CompletableFuture.runAsync(() -> {
+					streamService.setScreenShareContext(context);
+
+					try {
+						ScreenDocumentCreator.create(documentService, context.getSource());
+
+						// Register created screen document with the screen source.
+						screenSourceService.addScreenShareContext(
+								documentService.getDocuments().getSelectedDocument(),
+								context);
+					}
+					catch (IOException e) {
+						throw new RuntimeException(e);
+					}
+				}).exceptionally(e -> {
+					handleException(e, "Set screen-source failed",
+							"stream.screen.share.error");
+					return null;
+				});
+			}));
+	}
+
+	@Subscribe
+	public void onEvent(final ScreenShareEndEvent event) {
+		streamService.enableScreenSharing(false);
+
+		// Remove document.
+		Document screenDoc = documentService.getDocuments()
+				.getSelectedDocument();
+
+		documentService.closeDocument(screenDoc);
+		documentService.selectLastDocument();
+
+		screenSourceService.removeScreenSource(screenDoc);
+
+		if (event.isForced()) {
+			showNotification(NotificationType.DEFAULT, "screen.share",
+					"screen.share.stopped");
 		}
 	}
 
@@ -652,6 +706,16 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 		presentationController.setMainWindowBounds(bounds);
 	}
 
+	private void onViewFocus(boolean hasFocus) {
+		if (hasFocus) {
+			// Delay execution to give the screen-capturer a chance to process internal state.
+			CompletableFuture.runAsync(() -> {
+				PresenterContext ctx = (PresenterContext) context;
+				ctx.setScreenSharingStarted(false);
+			}, CompletableFuture.delayedExecutor(1500, TimeUnit.MILLISECONDS));
+		}
+	}
+
 	private boolean closeView(KeyEvent event) {
 		if (!contexts.isEmpty()) {
 			Presenter<?> presenter = contexts.get(contexts.size() - 1);
@@ -746,6 +810,10 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 
 		// Remove bookmarks for the closed document.
 		bookmarkService.clearBookmarks(doc);
+	}
+
+	private void documentSelected() {
+		streamService.enableScreenSharing(false);
 	}
 
 	private <T extends Presenter<?>> T createPresenter(Class<T> pClass) {

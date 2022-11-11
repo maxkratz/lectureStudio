@@ -16,21 +16,32 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package org.lecturestudio.presenter.api.net;
+package org.lecturestudio.presenter.api.model;
 
-/**
- * Default screen-share profile collection.
- *
- * @author Alex Andres
- */
-public class ScreenShareProfiles {
+import org.lecturestudio.core.beans.ObjectProperty;
+import org.lecturestudio.presenter.api.net.ScreenShareProfile;
+import org.lecturestudio.web.api.model.ScreenSource;
 
-	public static ScreenShareProfile STILL = new ScreenShareProfile(
-			ScreenShareProfileType.STILL, 2000, 3);
+public class ScreenShareContext {
 
-	public static ScreenShareProfile MOTION = new ScreenShareProfile(
-			ScreenShareProfileType.MOTION, 2000, 24);
+	private final ObjectProperty<ScreenShareProfile> profile = new ObjectProperty<>();
 
-	public static final ScreenShareProfile[] DEFAULT = { STILL, MOTION };
+	private final ObjectProperty<ScreenSource> source = new ObjectProperty<>();
 
+
+	public ObjectProperty<ScreenSource> sourceProperty() {
+		return source;
+	}
+
+	public ObjectProperty<ScreenShareProfile> profileProperty() {
+		return profile;
+	}
+
+	public ScreenSource getSource() {
+		return source.get();
+	}
+
+	public ScreenShareProfile getProfile() {
+		return profile.get();
+	}
 }
