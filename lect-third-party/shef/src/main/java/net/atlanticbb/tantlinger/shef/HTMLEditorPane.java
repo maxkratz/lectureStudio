@@ -25,6 +25,7 @@ import javax.swing.JComboBox;
 import javax.swing.JEditorPane;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.event.CaretEvent;
@@ -100,7 +101,7 @@ public class HTMLEditorPane extends JPanel
 
         setLayout(new BorderLayout());
 
-        add(wysEditor, BorderLayout.CENTER);
+        add(new JScrollPane(wysEditor), BorderLayout.CENTER);
     }
 
     public JToolBar getFormatToolBar()
@@ -366,6 +367,9 @@ public class HTMLEditorPane extends JPanel
     	WysiwygHTMLEditorKit kit = new WysiwygHTMLEditorKit();
     	StyleSheet styleSheet = kit.getStyleSheet();
 		styleSheet.addRule("code {background: #DAE6E6;}");
+        styleSheet.addRule("p {margin: 0 0 10px 0;}");
+        styleSheet.addRule("ul {margin-left: 20px;}");
+        styleSheet.addRule("ol {margin-left: 20px;}");
 
 		// Add custom span rule.
 		StyleSheet styleSheetTmp = new StyleSheet();

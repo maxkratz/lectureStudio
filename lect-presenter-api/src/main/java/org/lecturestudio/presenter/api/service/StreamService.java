@@ -18,8 +18,10 @@
 
 package org.lecturestudio.presenter.api.service;
 
+import static java.util.Objects.nonNull;
 import static java.util.Objects.requireNonNull;
 
+import java.io.FileNotFoundException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -45,7 +47,7 @@ import org.lecturestudio.web.api.stream.model.Course;
 @Singleton
 public class StreamService {
 
-	private final static Logger LOG = LogManager.getLogger(StreamService.class);
+	private static final Logger LOG = LogManager.getLogger(StreamService.class);
 
 	private final PresenterContext context;
 
@@ -58,7 +60,7 @@ public class StreamService {
 
 	@Inject
 	public StreamService(PresenterContext context,
-			WebRtcStreamService streamService, WebService webService) {
+	                     WebRtcStreamService streamService, WebService webService) {
 		this.context = context;
 		this.eventBus = context.getEventBus();
 		this.streamService = streamService;
@@ -155,7 +157,21 @@ public class StreamService {
 			}
 		})
 		.exceptionally(e -> {
-			handleServiceError(e, "Start quiz failed", "quiz.start.error");
+			String errorMessage = null;
+
+			Throwable cause = e.getCause();
+			while (nonNull(cause)) {
+				// A quiz may have references to files, e.g. images.
+				// Be specific when showing the error message to the user.
+				if (cause instanceof FileNotFoundException) {
+					errorMessage = cause.getLocalizedMessage();
+					break;
+				}
+
+				cause = cause.getCause();
+			}
+
+			handleServiceError(e, "Start quiz failed", "quiz.start.error", errorMessage);
 			return null;
 		});
 	}
@@ -287,6 +303,10 @@ public class StreamService {
 			message = "service.timeout.error";
 		}
 
+		handleException(error, errorMessage, title, message);
+	}
+
+	private void handleServiceError(Throwable error, String errorMessage, String title, String message) {
 		handleException(error, errorMessage, title, message);
 	}
 

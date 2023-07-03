@@ -126,7 +126,7 @@ public class SwingToolbarView extends JPanel implements ToolbarView {
 
 	private JToggleButton ellipseButton;
 
-//	private ToolGroupButton selectButton;
+	private JToggleButton selectButton;
 
 	private JToggleButton eraseButton;
 
@@ -243,7 +243,6 @@ public class SwingToolbarView extends JPanel implements ToolbarView {
 
 			streamMicButton.setEnabled(started);
 			streamCamButton.setEnabled(started);
-			screenShareEnableButton.setEnabled(started);
 		});
 	}
 
@@ -345,6 +344,11 @@ public class SwingToolbarView extends JPanel implements ToolbarView {
 	@Override
 	public void setOnTextSelectTool(Action action) {
 		SwingUtils.bindAction(textSelectButton, action);
+		textSelectButton.addChangeListener(e -> {
+			if (textSelectButton.isSelected()) {
+				setColorButtonsEnabled(true);
+			}
+		});
 	}
 
 	@Override
@@ -389,7 +393,7 @@ public class SwingToolbarView extends JPanel implements ToolbarView {
 
 	@Override
 	public void setOnSelectTool(Action action) {
-//		SwingUtils.bindAction(selectButton, action);
+		SwingUtils.bindAction(selectButton, action);
 	}
 
 	@Override

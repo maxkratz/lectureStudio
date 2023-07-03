@@ -36,6 +36,7 @@ import java.awt.event.WindowEvent;
 import java.awt.geom.AffineTransform;
 
 import javax.swing.JWindow;
+import javax.swing.SwingUtilities;
 
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.view.Screens;
@@ -153,27 +154,29 @@ public class PresentationWindow extends AbstractWindow implements SlidePresentat
 			return;
 		}
 
-		Container contentPane = getWindow().getContentPane();
+		SwingUtilities.invokeLater(() -> {
+			Container contentPane = getWindow().getContentPane();
 
-		switch (context.getViewType()) {
-			case SLIDE -> {
-				context.configure(slideView);
+			switch (context.getViewType()) {
+				case SLIDE -> {
+					context.configure(slideView);
 
-				contentPane.remove(screenView);
-				contentPane.add(slideView);
+					contentPane.remove(screenView);
+					contentPane.add(slideView);
 
-				updateSlidePage();
+					updateSlidePage();
+				}
+				case SCREEN -> {
+					context.configure(screenView);
+
+					contentPane.remove(slideView);
+					contentPane.add(screenView);
+				}
 			}
-			case SCREEN -> {
-				context.configure(screenView);
 
-				contentPane.remove(slideView);
-				contentPane.add(screenView);
-			}
-		}
-
-		contentPane.doLayout();
-		contentPane.repaint();
+			contentPane.doLayout();
+			contentPane.repaint();
+		});
 	}
 
 	@Override
@@ -277,13 +280,15 @@ public class PresentationWindow extends AbstractWindow implements SlidePresentat
 	}
 
 	private void centerSlideView() {
-		Dimension size = getSize();
-		Dimension viewSize = slideView.getCanvasBounds().getSize();
+		SwingUtilities.invokeLater(() -> {
+			Dimension size = getSize();
+			Dimension viewSize = slideView.getCanvasBounds().getSize();
 
-		int x = (size.width - viewSize.width) / 2;
-		int y = (size.height - viewSize.height) / 2;
+			int x = (size.width - viewSize.width) / 2;
+			int y = (size.height - viewSize.height) / 2;
 
-		slideView.setSlideLocation(x, y);
-		slideView.repaint();
+			slideView.setSlideLocation(x, y);
+			slideView.repaint();
+		});
 	}
 }

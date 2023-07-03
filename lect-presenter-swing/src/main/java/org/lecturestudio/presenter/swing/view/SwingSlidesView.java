@@ -43,6 +43,8 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
+import org.apache.commons.lang3.StringUtils;
+
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.dictionary.Dictionary;
 import org.lecturestudio.core.beans.BooleanProperty;
@@ -59,6 +61,7 @@ import org.lecturestudio.core.view.Action;
 import org.lecturestudio.presenter.api.model.MessageBarPosition;
 import org.lecturestudio.presenter.api.config.SlideViewConfiguration;
 import org.lecturestudio.presenter.api.service.UserPrivilegeService;
+import org.lecturestudio.presenter.swing.utils.ViewUtil;
 import org.lecturestudio.swing.model.AdaptiveTab;
 import org.lecturestudio.swing.model.AdaptiveTabType;
 import org.lecturestudio.swing.model.ExternalWindowPosition;
@@ -76,10 +79,11 @@ import org.lecturestudio.swing.util.VideoFrameConverter;
 import org.lecturestudio.swing.view.SwingView;
 import org.lecturestudio.swing.view.ViewPostConstruct;
 import org.lecturestudio.web.api.event.PeerStateEvent;
-import org.lecturestudio.web.api.event.PeerVideoFrameEvent;
+import org.lecturestudio.web.api.event.RemoteVideoFrameEvent;
 import org.lecturestudio.web.api.message.MessengerDirectMessage;
 import org.lecturestudio.web.api.message.MessengerMessage;
 import org.lecturestudio.web.api.message.SpeechBaseMessage;
+import org.lecturestudio.web.api.model.UserInfo;
 import org.lecturestudio.web.api.stream.model.CourseParticipant;
 
 @SwingView(name = "main-slides")
@@ -127,7 +131,7 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 
 	private ConsumerAction<Boolean> mutePeerVideoAction;
 
-	private ConsumerAction<Long> stopPeerConnectionAction;
+	private ConsumerAction<UUID> stopPeerConnectionAction;
 
 	private ConsumerAction<ExternalWindowPosition> externalMessagesPositionChangedAction;
 
@@ -237,6 +241,7 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 
 	private MessageBarPosition messageBarPosition = MessageBarPosition.BOTTOM;
 	private MessageBarPosition participantsPosition = MessageBarPosition.LEFT;
+	private MessageBarPosition previewPosition = MessageBarPosition.RIGHT;
 
 	private String selectedSlideLabelText = "";
 
@@ -337,6 +342,7 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 				thumbPanel = new ThumbnailPanel();
 			}
 
+			thumbPanel.setEnabled(slidesTabPane.isEnabled());
 			thumbPanel.setRenderController(pageRenderer);
 			thumbPanel.setDocument(doc, ppProvider);
 			thumbPanel.addSelectedSlideChangedListener(event -> {
@@ -347,7 +353,9 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 				}
 			});
 
-			VerticalTab tab = VerticalTab.fromText(doc.getName(), getSlidesTabPane().getTabPlacement());
+			String tabName = StringUtils.abbreviate(doc.getName(), 32);
+
+			VerticalTab tab = VerticalTab.fromText(tabName, getSlidesTabPane().getTabPlacement());
 			getSlidesTabPane().addTabBefore(new AdaptiveTab(AdaptiveTabType.SLIDE, tab, thumbPanel),
 					AdaptiveTabType.MESSAGE);
 			getSlidesTabPane().setPaneTabSelected(tab.getText());
@@ -418,6 +426,13 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 
 			// Set document outline.
 			setOutline(doc.getDocumentOutline());
+		});
+	}
+
+	@Override
+	public void addParticipants(Collection<CourseParticipant> participants) {
+		SwingUtils.invoke(() -> {
+			participantList.addParticipants(participants);
 		});
 	}
 
@@ -538,8 +553,14 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 		SwingUtils.invoke(() -> {
 			if (state == ExecutableState.Started) {
 				setMessageBarTabEnabled(dict.get(MESSAGE_LABEL_KEY), true);
+
+				participantList.clear();
 			}
 			else {
+				if (state == ExecutableState.Stopped) {
+					participantList.clear();
+				}
+
 				removeMessageViews(SpeechRequestView.class);
 			}
 		});
@@ -586,16 +607,10 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 	@Override
 	public void setMessengerMessage(MessengerMessage message) {
 		SwingUtils.invoke(() -> {
-			String myId = userPrivilegeService.getUserInfo().getUserId();
-			boolean byMe = Objects.equals(message.getUserId(), myId);
+			UserInfo userInfo = userPrivilegeService.getUserInfo();
+			String myId = userInfo.getUserId();
 
-			String sender = byMe
-					? dict.get("text.message.me")
-					: String.format("%s %s", message.getFirstName(), message.getFamilyName());
-
-			MessageView messageView = new MessageView(this.dict);
-			messageView.setUser(sender);
-			messageView.setDate(message.getDate());
+			MessageView messageView = ViewUtil.createMessageView(MessageView.class, userInfo, message, dict);
 			messageView.setMessage(message.getMessage().getText());
 			messageView.setOnDiscard(() -> {
 				executeAction(discardMessageAction, message);
@@ -611,8 +626,13 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 			if (message instanceof MessengerDirectMessage) {
 				MessengerDirectMessage directMessage = (MessengerDirectMessage) message;
 				String recipientId = directMessage.getRecipientId();
+				boolean byMe = Objects.equals(message.getUserId(), myId);
 				boolean toMe = Objects.equals(recipientId, myId);
 				boolean toOrganisers = Objects.equals(recipientId, "organisers");
+
+				String sender = byMe
+						? dict.get("text.message.me")
+						: String.format("%s %s", message.getFirstName(), message.getFamilyName());
 
 				String recipient = toMe
 						? dict.get("text.message.to.me")
@@ -620,7 +640,7 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 							? dict.get("text.message.to.organisators.short")
 							: String.format("%s %s", directMessage.getRecipientFirstName(), directMessage.getRecipientFamilyName());
 
-				messageView.setUser(MessageFormat.format(dict.get("text.message.recipient"), sender, ""));
+				messageView.setUserName(MessageFormat.format(dict.get("text.message.recipient"), sender, ""));
 				messageView.setPrivateText(recipient);
 			}
 
@@ -635,10 +655,10 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 		SwingUtils.invoke(() -> {
 			participantList.addSpeechRequest(message);
 
-			SpeechRequestView requestView = new SpeechRequestView(this.dict);
+			UserInfo userInfo = userPrivilegeService.getUserInfo();
+
+			SpeechRequestView requestView = ViewUtil.createMessageView(SpeechRequestView.class, userInfo, message, dict);
 			requestView.setRequestId(message.getRequestId());
-			requestView.setUser(String.format("%s %s", message.getFirstName(), message.getFamilyName()));
-			requestView.setDate(message.getDate());
 			requestView.setOnAccept(() -> {
 				executeAction(acceptSpeechRequestAction, message);
 
@@ -664,7 +684,7 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 				if (c instanceof SpeechRequestView) {
 					SpeechRequestView view = (SpeechRequestView) c;
 
-					if (view.getRequestId() == message.getRequestId()) {
+					if (Objects.equals(view.getRequestId(), message.getRequestId())) {
 						view.setCanceled();
 
 						removeMessageView(view);
@@ -761,12 +781,12 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 	}
 
 	@Override
-	public void setOnStopPeerConnection(ConsumerAction<Long> action) {
+	public void setOnStopPeerConnection(ConsumerAction<UUID> action) {
 		stopPeerConnectionAction = action;
 	}
 
 	@Override
-	public void setVideoFrameEvent(PeerVideoFrameEvent event) {
+	public void setVideoFrameEvent(RemoteVideoFrameEvent event) {
 		if (isNull(peerView)) {
 			return;
 		}
@@ -998,7 +1018,14 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 	}
 
 	private AdaptiveTabbedPane getSlidesTabPane() {
-		return externalSlidePreviewFrame.isVisible() ? externalSlidePreviewTabPane : rightTabPane;
+		if (externalSlidePreviewFrame.isVisible()) {
+			return externalSlidePreviewTabPane;
+		}
+
+		if (Objects.requireNonNull(previewPosition) == MessageBarPosition.LEFT) {
+			return leftTabPane;
+		}
+		return rightTabPane;
 	}
 
 	@Override
@@ -1057,6 +1084,16 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 		}
 
 		participantsPosition = position;
+	}
+
+	@Override
+	public void setPreviewPosition(MessageBarPosition position) {
+		switch (position) {
+			case LEFT -> showPreviewLeft();
+			case RIGHT -> showPreviewRight();
+		}
+
+		previewPosition = position;
 	}
 
 	private void showMessagesPlaceholder() {
@@ -1142,7 +1179,27 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 		}
 	}
 
-	private void removePeerView(long requestId) {
+	private void showPreviewLeft() {
+		if (previewPosition == MessageBarPosition.LEFT) {
+			return;
+		}
+
+		leftTabPane.addTabs(removePreviewTabs(), 0);
+
+		maximizeLeftTabPane();
+	}
+
+	private void showPreviewRight() {
+		if (previewPosition == MessageBarPosition.RIGHT) {
+			return;
+		}
+
+		rightTabPane.addTabs(removePreviewTabs(), 0);
+
+		maximizeRightTabPane();
+	}
+
+	private void removePeerView(UUID requestId) {
 		for (var component : peerViewContainer.getComponents()) {
 			if (!(component instanceof PeerView)) {
 				continue;
@@ -1260,33 +1317,11 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 
 	private List<AdaptiveTab> removeMessageBarTabs() {
 		final ArrayList<AdaptiveTab> removedTabs = new ArrayList<>();
-		final boolean prevMinimized;
 
 		switch (messageBarPosition) {
-			case BOTTOM -> {
-				prevMinimized = isBottomTabPaneMinimized();
-				removedTabs.addAll(bottomTabPane.removeTabsByType(
-						AdaptiveTabType.MESSAGE));
-				if (prevMinimized) {
-					minimizeBottomTabPane();
-				}
-			}
-			case LEFT -> {
-				prevMinimized = isLeftTabPaneMinimized();
-				removedTabs.addAll(
-						leftTabPane.removeTabsByType(AdaptiveTabType.MESSAGE));
-				if (prevMinimized) {
-					minimizeLeftTabPane();
-				}
-			}
-			case RIGHT -> {
-				prevMinimized = isRightTabPaneMinimized();
-				removedTabs.addAll(
-						rightTabPane.removeTabsByType(AdaptiveTabType.MESSAGE));
-				if (prevMinimized) {
-					minimizeRightTabPane();
-				}
-			}
+			case BOTTOM -> removedTabs.addAll(bottomTabPane.removeTabsByType(AdaptiveTabType.MESSAGE));
+			case LEFT -> removedTabs.addAll(leftTabPane.removeTabsByType(AdaptiveTabType.MESSAGE));
+			case RIGHT -> removedTabs.addAll(rightTabPane.removeTabsByType(AdaptiveTabType.MESSAGE));
 		}
 
 		return removedTabs;
@@ -1317,25 +1352,21 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 
 	private List<AdaptiveTab> removeParticipantsTabs() {
 		final ArrayList<AdaptiveTab> removedTabs = new ArrayList<>();
-		final boolean prevMinimized;
 
 		switch (participantsPosition) {
-			case LEFT -> {
-				prevMinimized = isLeftTabPaneMinimized();
-				removedTabs.addAll(leftTabPane.removeTabsByType(AdaptiveTabType.PARTICIPANTS));
+			case LEFT -> removedTabs.addAll(leftTabPane.removeTabsByType(AdaptiveTabType.PARTICIPANTS));
+			case RIGHT -> removedTabs.addAll(rightTabPane.removeTabsByType(AdaptiveTabType.PARTICIPANTS));
+		}
 
-				if (prevMinimized) {
-					minimizeLeftTabPane();
-				}
-			}
-			case RIGHT -> {
-				prevMinimized = isRightTabPaneMinimized();
-				removedTabs.addAll(rightTabPane.removeTabsByType(AdaptiveTabType.PARTICIPANTS));
+		return removedTabs;
+	}
 
-				if (prevMinimized) {
-					minimizeRightTabPane();
-				}
-			}
+	private List<AdaptiveTab> removePreviewTabs() {
+		final ArrayList<AdaptiveTab> removedTabs = new ArrayList<>();
+
+		switch (previewPosition) {
+			case LEFT -> removedTabs.addAll(leftTabPane.removeTabsByType(AdaptiveTabType.SLIDE));
+			case RIGHT -> removedTabs.addAll(rightTabPane.removeTabsByType(AdaptiveTabType.SLIDE));
 		}
 
 		return removedTabs;
@@ -1412,9 +1443,10 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 	}
 
 	private void maximizePane(JSplitPane splitPane, double oldSplitPaneRatio, int splitPaneSize) {
-		final int dividerLocation = (int) (oldSplitPaneRatio * splitPaneSize);
+//		final int dividerLocation = (int) (oldSplitPaneRatio * splitPaneSize);
 
-		splitPane.setDividerLocation(dividerLocation);
+//		splitPane.setDividerLocation(dividerLocation);
+		splitPane.setDividerLocation(oldSplitPaneRatio);
 	}
 
 	private double getTabSplitPaneDividerRatio() {
@@ -1430,22 +1462,26 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 	}
 
 	private void toggleLeftTab(boolean sameTab) {
-		toggleTab(sameTab, leftTabPane::getWidth, leftTabPane::getPaneMainAxisSize, this::minimizeLeftTabPane,
+		toggleTab(sameTab, leftTabPane::getWidth,
+				leftTabPane::getPaneMainAxisSize, this::minimizeLeftTabPane,
 				this::maximizeLeftTabPane);
 	}
 
 	private void toggleBottomTab(boolean sameTab) {
-		toggleTab(sameTab, bottomTabPane::getHeight, bottomTabPane::getPaneMainAxisSize, this::minimizeBottomTabPane,
+		toggleTab(sameTab, bottomTabPane::getHeight,
+				bottomTabPane::getPaneMainAxisSize, this::minimizeBottomTabPane,
 				this::maximizeBottomTabPane);
 	}
 
 	private void toggleRightTab(boolean sameTab) {
-		toggleTab(sameTab, rightTabPane::getWidth, rightTabPane::getPaneMainAxisSize, this::minimizeRightTabPane,
+		toggleTab(sameTab, rightTabPane::getWidth,
+				rightTabPane::getPaneMainAxisSize, this::minimizeRightTabPane,
 				this::maximizeRightTabPane);
 	}
 
-	private void toggleTab(boolean sameTab, IntSupplier tabPaneSizeFunc, IntSupplier tabSizeFunc,
-						   Consumer<Boolean> minimizeFunc, Runnable maximizeFunc) {
+	private void toggleTab(boolean sameTab, IntSupplier tabPaneSizeFunc,
+			IntSupplier tabSizeFunc, Consumer<Boolean> minimizeFunc,
+			Runnable maximizeFunc) {
 		final int tabPaneSize = tabPaneSizeFunc.getAsInt();
 		final int tabSize = tabSizeFunc.getAsInt();
 
@@ -1513,16 +1549,23 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 		});
 
 		leftTabPane.addChangeListener(new AdaptiveTabbedPaneChangeListener() {
+
 			@Override
 			public void onTabClicked(AdaptiveTab clickedTab, boolean sameTab) {
-				toggleLeftTab(sameTab);
+				if (clickedTab.type == AdaptiveTabType.SLIDE) {
+					selectedSlideLabelText = clickedTab.getLabelText();
+				}
+				else {
+					toggleLeftTab(sameTab);
+				}
 			}
 
 			@Override
 			public void onVisibilityChanged(boolean visible) {
 				if (visible) {
 					maximizeLeftTabPane();
-				} else {
+				}
+				else {
 					minimizeLeftTabPane();
 				}
 			}
@@ -1543,7 +1586,8 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 			public void onVisibilityChanged(boolean visible) {
 				if (visible) {
 					maximizeBottomTabPane();
-				} else {
+				}
+				else {
 					minimizeBottomTabPane();
 				}
 			}
@@ -1581,7 +1625,7 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 				if (clickedTab.type == AdaptiveTabType.SLIDE) {
 					selectedSlideLabelText = clickedTab.getLabelText();
 				}
-				toggleRightTab(sameTab);
+				//toggleRightTab(sameTab);
 			}
 
 			@Override
@@ -1705,6 +1749,8 @@ public class SwingSlidesView extends JPanel implements SlidesView {
 	}
 
 	private void addMessageView(Component view) {
+		setMessageBarTabVisible(dict.get(MESSAGE_LABEL_KEY), true);
+
 		messageViewContainer.add(view);
 		messageViewContainer.revalidate();
 		messageViewContainer.repaint();

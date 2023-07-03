@@ -22,8 +22,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import org.lecturestudio.core.beans.StringProperty;
+import org.lecturestudio.core.geometry.PenPoint2D;
 import org.lecturestudio.core.geometry.Point2D;
 import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.graphics.Color;
@@ -34,8 +36,9 @@ import org.lecturestudio.core.text.FontWeight;
 import org.lecturestudio.core.text.TextAttributes;
 
 /**
- * A shape representing a text input. It has a textbox handle to associate it with some textbox widget on the GUI.
- * 
+ * A shape representing a text input. It has a textbox handle to associate it
+ * with some textbox widget on the GUI.
+ *
  * @author Alex Andres
  * @author Tobias
  */
@@ -51,9 +54,12 @@ public class TextShape extends Shape implements TextBoxShape<Font> {
 	
 	private TextAttributes attributes = new TextAttributes();
 
+	private Rectangle2D dirtyBounds = new Rectangle2D();
+
+
 	/**
-	 * Creates a {@link TextShape}.
-	 * (Calls the default constructor of {@link Shape} and calls {@link #initProperties()}.)
+	 * Creates a {@link TextShape}. (Calls the default constructor of
+	 * {@link Shape} and calls {@link #initProperties()}.)
 	 */
 	public TextShape() {
 		super();
@@ -62,8 +68,9 @@ public class TextShape extends Shape implements TextBoxShape<Font> {
 	}
 
 	/**
-	 * Creates a new {@link TextShape} with the specified input byte array containing the data for the {@link TeXShape}.
-	 * (Calls {@link #initProperties().)
+	 * Creates a new {@link TextShape} with the specified input byte array
+	 * containing the data for the {@link TeXShape}. (Calls
+	 * {@link #initProperties())
 	 *
 	 * @param input The input byte array.
 	 */
@@ -104,9 +111,9 @@ public class TextShape extends Shape implements TextBoxShape<Font> {
 		if (this.attributes.equals(attributes)) {
 			return;
 		}
-		
+
 		this.attributes = attributes;
-		
+
 		fireTextFontChange();
 		fireShapeChanged(null);
 	}
@@ -146,9 +153,9 @@ public class TextShape extends Shape implements TextBoxShape<Font> {
 		if (this.font.equals(font)) {
 			return;
 		}
-		
+
 		this.font = font;
-		
+
 		fireTextFontChange();
 		fireShapeChanged(null);
 	}
@@ -170,7 +177,7 @@ public class TextShape extends Shape implements TextBoxShape<Font> {
 		
 		if (location != null) {
 			getBounds().setLocation(location.getX(), location.getY());
-			
+
 			fireTextLocationChange();
 			fireShapeChanged(null);
 		}
@@ -184,7 +191,33 @@ public class TextShape extends Shape implements TextBoxShape<Font> {
 	public Point2D getLocation() {
 		return getBounds().getLocation();
 	}
-	
+
+	@Override
+	public void moveByDelta(PenPoint2D delta) {
+		setLocation(getLocation().subtract(delta));
+
+		super.moveByDelta(delta);
+	}
+
+	/**
+	 * Returns the bounding rectangle of the shape which encloses the changed
+	 * area.
+	 *
+	 * @return The bounding rectangle of this shape.
+	 */
+	public Rectangle2D getDirtyBounds() {
+		return dirtyBounds;
+	}
+
+	/**
+	 * Set new bounding rectangle of the shape which encloses the changed area.
+	 *
+	 * @param bounds The new bounding rectangle of this shape.
+	 */
+	public void setDirtyBounds(Rectangle2D bounds) {
+		this.dirtyBounds = bounds;
+	}
+
 	/**
 	 * Returns whether text is underlined or not.
 	 * 
@@ -366,6 +399,10 @@ public class TextShape extends Shape implements TextBoxShape<Font> {
 
 	private void initProperties() {
 		text.addListener((observable, oldValue, newValue) -> {
+			if (Objects.equals(oldValue, newValue)) {
+				return;
+			}
+
 			fireTextChange();
 			fireShapeChanged(null);
 		});

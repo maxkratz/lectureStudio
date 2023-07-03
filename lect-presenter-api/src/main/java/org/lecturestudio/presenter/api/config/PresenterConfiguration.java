@@ -33,6 +33,8 @@ public class PresenterConfiguration extends Configuration {
 
 	private final BooleanProperty saveDocOnClose = new BooleanProperty();
 
+	private final IntegerProperty pageSelectionDelay = new IntegerProperty();
+
 	private final StreamConfiguration streamConfig = new StreamConfiguration();
 
 	private final TemplateConfiguration templateConfig = new TemplateConfiguration();
@@ -109,6 +111,18 @@ public class PresenterConfiguration extends Configuration {
 
 	public BooleanProperty saveDocOnCloseProperty() {
 		return saveDocOnClose;
+	}
+
+	public Integer getPageSelectionDelay() {
+		return pageSelectionDelay.get();
+	}
+
+	public void setPageSelectionDelay(Integer delay) {
+		this.pageSelectionDelay.set(delay);
+	}
+
+	public IntegerProperty pageSelectionDelayProperty() {
+		return pageSelectionDelay;
 	}
 
 	/**

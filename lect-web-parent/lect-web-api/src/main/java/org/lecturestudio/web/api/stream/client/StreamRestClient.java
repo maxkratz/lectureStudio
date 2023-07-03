@@ -19,6 +19,7 @@
 package org.lecturestudio.web.api.stream.client;
 
 import java.util.List;
+import java.util.UUID;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
@@ -39,6 +40,7 @@ import org.lecturestudio.web.api.data.bind.JsonConfigProvider;
 import org.lecturestudio.web.api.model.UserInfo;
 import org.lecturestudio.web.api.model.UserPrivileges;
 import org.lecturestudio.web.api.stream.model.Course;
+import org.lecturestudio.web.api.stream.model.CourseParticipant;
 
 /**
  * Streaming API REST client implementation. The user must be authenticated with
@@ -85,6 +87,17 @@ public interface StreamRestClient {
 	List<Course> getCourses();
 
 	/**
+	 * Gets a list of all participants in an active courses.
+	 *
+	 * @param courseId The unique course ID.
+	 *
+	 * @return A list of all participants in an active courses.
+	 */
+	@GET
+	@Path("/participants/{courseId}")
+	List<CourseParticipant> getParticipants(@PathParam("courseId") long courseId);
+
+	/**
 	 * Uploads the provided multipart data.
 	 *
 	 * @param data The multipart data to upload.
@@ -104,7 +117,7 @@ public interface StreamRestClient {
 	 */
 	@POST
 	@Path("/speech/accept/{requestId}")
-	void acceptSpeechRequest(@PathParam("requestId") long requestId);
+	void acceptSpeechRequest(@PathParam("requestId") UUID requestId);
 
 	/**
 	 * Reject a speech request with the corresponding ID.
@@ -113,7 +126,7 @@ public interface StreamRestClient {
 	 */
 	@POST
 	@Path("/speech/reject/{requestId}")
-	void rejectSpeechRequest(@PathParam("requestId") long requestId);
+	void rejectSpeechRequest(@PathParam("requestId") UUID requestId);
 
 	@POST
 	@Path("/course/recorded/{courseId}/{recorded}")

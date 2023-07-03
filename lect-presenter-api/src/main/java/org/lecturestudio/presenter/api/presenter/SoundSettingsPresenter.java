@@ -139,15 +139,18 @@ public class SoundSettingsPresenter extends Presenter<SoundSettingsView> {
 			audioConfig.setRecordingProcessingSettings(processingSettings);
 		}
 
+		AudioProcessingSettings processingSettings = audioConfig.getRecordingProcessingSettings();
+
 		view.setAudioCaptureDevices(audioSystemProvider.getRecordingDevices());
 		view.setAudioPlaybackDevices(audioSystemProvider.getPlaybackDevices());
 		view.setAudioCaptureDevice(audioConfig.captureDeviceNameProperty());
 		view.setAudioPlaybackDevice(audioConfig.playbackDeviceNameProperty());
 		view.bindAudioPlaybackLevel(audioConfig.playbackVolumeProperty());
 		view.bindAudioCaptureLevel(audioConfig.recordingMasterVolumeProperty());
-		view.setAudioCaptureNoiseSuppressionLevel(
-				audioConfig.getRecordingProcessingSettings()
-						.noiseSuppressionLevelProperty());
+		view.bindAudioCaptureNoiseSuppressionLevelEnabled(processingSettings
+				.enableNoiseSuppressionProperty());
+		view.setAudioCaptureNoiseSuppressionLevel(processingSettings
+				.noiseSuppressionLevelProperty());
 		view.setOnViewVisible(this::onViewVisible);
 		view.setOnAdjustAudioCaptureLevel(this::adjustAudioCaptureLevel);
 		view.bindTestCaptureEnabled(captureEnabled);
@@ -386,7 +389,16 @@ public class SoundSettingsPresenter extends Presenter<SoundSettingsView> {
 	}
 
 	private void startAudioLevelCapture() {
+		AudioProcessingSettings settings = new AudioProcessingSettings();
+		settings.setHighpassFilterEnabled(true);
+		settings.setNoiseSuppressionEnabled(true);
+		settings.setNoiseSuppressionLevel(NoiseSuppressionLevel.LOW);
+		settings.setLevelEstimationEnabled(true);
+		settings.setVoiceDetectionEnabled(true);
+		settings.setEchoCancellerEnabled(true);
+
 		levelRecorder = createAudioRecorder();
+		levelRecorder.setAudioProcessingSettings(settings);
 		levelRecorder.setAudioSink(new AudioSink() {
 
 			@Override
@@ -401,6 +413,7 @@ public class SoundSettingsPresenter extends Presenter<SoundSettingsView> {
 			@Override
 			public int write(byte[] data, int offset, int length) {
 				double level = getSignalPowerLevel(data);
+
 				view.setAudioCaptureLevel(level);
 
 				context.getAudioBus().post(new AudioSignalEvent(level));

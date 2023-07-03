@@ -19,6 +19,11 @@
 package org.lecturestudio.web.api.stream.service;
 
 import java.util.List;
+import java.util.UUID;
+
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 
 import jakarta.inject.Inject;
 
@@ -31,6 +36,7 @@ import org.lecturestudio.web.api.service.ProviderService;
 import org.lecturestudio.web.api.service.ServiceParameters;
 import org.lecturestudio.web.api.stream.client.StreamRestClient;
 import org.lecturestudio.web.api.stream.model.Course;
+import org.lecturestudio.web.api.stream.model.CourseParticipant;
 
 /**
  * Service implementation to manage streaming related information with streaming
@@ -90,6 +96,18 @@ public class StreamProviderService extends ProviderService {
 	}
 
 	/**
+	 * Gets a list of all participants in an active courses.
+	 *
+	 * @param courseId The unique course ID.
+	 * @return A list of all participants in an active courses.
+	 */
+	@GET
+	@Path("/participants/{courseId}")
+	public List<CourseParticipant> getParticipants(@PathParam("courseId") long courseId) {
+		return streamRestClient.getParticipants(courseId);
+	}
+
+	/**
 	 * Uploads the provided multipart data.
 	 *
 	 * @param data The multipart data to upload.
@@ -105,7 +123,7 @@ public class StreamProviderService extends ProviderService {
 	 *
 	 * @param requestId The request ID.
 	 */
-	public void acceptSpeechRequest(long requestId) {
+	public void acceptSpeechRequest(UUID requestId) {
 		streamRestClient.acceptSpeechRequest(requestId);
 	}
 
@@ -114,7 +132,7 @@ public class StreamProviderService extends ProviderService {
 	 *
 	 * @param requestId The request ID.
 	 */
-	public void rejectSpeechRequest(long requestId) {
+	public void rejectSpeechRequest(UUID requestId) {
 		streamRestClient.rejectSpeechRequest(requestId);
 	}
 

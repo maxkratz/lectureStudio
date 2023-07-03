@@ -22,6 +22,7 @@ import static java.util.Objects.nonNull;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -39,8 +40,13 @@ import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.bus.EventBus;
 import org.lecturestudio.core.io.RandomAccessAudioStream;
 import org.lecturestudio.core.model.Document;
+import org.lecturestudio.core.model.Interval;
 import org.lecturestudio.core.recording.RecordingEditException;
 import org.lecturestudio.core.recording.edit.EditAction;
+import org.lecturestudio.editor.api.edit.HideAndMoveNextPageAction;
+import org.lecturestudio.editor.api.edit.HidePageAction;
+import org.lecturestudio.editor.api.edit.MovePageAction;
+import org.lecturestudio.editor.api.edit.ReplaceAllPagesAction;
 import org.lecturestudio.editor.api.edit.ReplaceAudioAction;
 import org.lecturestudio.core.recording.RecordingChangeEvent;
 import org.lecturestudio.core.recording.RecordingChangeListener;
@@ -55,7 +61,6 @@ import org.lecturestudio.editor.api.context.EditorContext;
 import org.lecturestudio.editor.api.edit.CutAction;
 import org.lecturestudio.editor.api.edit.DeletePageAction;
 import org.lecturestudio.editor.api.edit.InsertRecordingAction;
-import org.lecturestudio.editor.api.edit.ReplacePageAction;
 import org.lecturestudio.media.recording.RecordingEvent;
 
 import org.apache.logging.log4j.LogManager;
@@ -64,7 +69,7 @@ import org.apache.logging.log4j.Logger;
 @Singleton
 public class RecordingFileService {
 
-	private final static Logger LOG = LogManager.getLogger(RecordingFileService.class);
+	private static final Logger LOG = LogManager.getLogger(RecordingFileService.class);
 
 	private final RecordingChangeListener recordingChangeListener = this::recordingChanged;
 
@@ -158,21 +163,22 @@ public class RecordingFileService {
 		}
 		if (nonNull(recording)) {
 			recording.addRecordingChangeListener(recordingChangeListener);
+
+			// Move new recording to the tail in the list.
+			if (recordings.remove(recording)) {
+				recordings.add(recording);
+
+				eventBus.post(new RecordingEvent(oldRec, recording, RecordingEvent.Type.SELECTED));
+
+				Document document = recording.getRecordedDocument().getDocument();
+
+				playbackService.setRecording(recording);
+				documentService.selectDocument(document);
+
+				updateEditState(recording);
+			}
 		}
 
-		// Move new recording to the tail in the list.
-		if (recordings.remove(recording)) {
-			recordings.add(recording);
-
-			eventBus.post(new RecordingEvent(oldRec, recording, RecordingEvent.Type.SELECTED));
-
-			Document document = recording.getRecordedDocument().getDocument();
-
-			playbackService.setRecording(recording);
-			documentService.selectDocument(document);
-
-			updateEditState(recording);
-		}
 	}
 
 	public Recording getSelectedRecording() {
@@ -187,10 +193,33 @@ public class RecordingFileService {
 		return !recordings.isEmpty();
 	}
 
+	/**
+	 * Removes a portion of a recording specified by a time
+	 * interval. All recorded parts - audio, events and slides - contained within
+	 * the interval will be removed from the recording.
+	 *
+	 * @param start The start time from where to start removing. The value
+	 *              must be within the range [0, 1].
+	 * @param end   The end time when to stop removing. The value must be
+	 *              within the range [0, 1].
+	 * @return An async future completing the task
+	 */
 	public CompletableFuture<Void> cut(double start, double end) {
 		return cut(start, end, getSelectedRecording());
 	}
 
+	/**
+	 * Removes a portion of a recording specified by a time
+	 * interval. All recorded parts - audio, events and slides - contained within
+	 * the interval will be removed from the recording.
+	 *
+	 * @param start     The start time from where to start removing. The value
+	 *                  must be within the range [0, 1].
+	 * @param end       The end time when to stop removing. The value must be
+	 *                  within the range [0, 1].
+	 * @param recording The recording this edit action should happen on
+	 * @return An async future completing the task
+	 */
 	public CompletableFuture<Void> cut(double start, double end, Recording recording) {
 		return CompletableFuture.runAsync(() -> {
 			try {
@@ -221,17 +250,26 @@ public class RecordingFileService {
 		});
 	}
 
-	public CompletableFuture<Void> replacePage(Document newDoc) {
+	public CompletableFuture<Void> replaceAllPages(Document newDoc) {
 		Recording recording = getSelectedRecording();
 
-		return CompletableFuture.runAsync(() -> {
-			try {
-				addEditAction(recording, new ReplacePageAction(recording, newDoc));
+		// PDDocument is getting garbage collected, when it's not actively referenced,
+		// saving the document in a temporary variable might keep the reference alive and make sure it won't get GCed
+		Runnable runnable = new Runnable() {
+			final Document document = newDoc;
+
+			@Override
+			public void run() {
+				try {
+					addEditAction(recording, new ReplaceAllPagesAction(recording, document));
+				}
+				catch (Exception e) {
+					throw new CompletionException(e);
+				}
 			}
-			catch (Exception e) {
-				throw new CompletionException(e);
-			}
-		});
+		};
+
+		return CompletableFuture.runAsync(runnable);
 	}
 
 	public CompletableFuture<Void> undoChanges() {
@@ -287,18 +325,18 @@ public class RecordingFileService {
 					throw new CompletionException(e);
 				}
 
-				RandomAccessAudioStream newAudioStream = new RandomAccessAudioStream(target);
-				newAudioStream.reset();
+				try (RandomAccessAudioStream newAudioStream = new RandomAccessAudioStream(target)) {
+					newAudioStream.reset();
 
-				Recording rec = new Recording();
-				rec.setRecordingHeader(recording.getRecordingHeader());
-				rec.setRecordedAudio(new RecordedAudio(newAudioStream));
-				rec.setRecordedEvents(recording.getRecordedEvents());
-				rec.setRecordedDocument(recording.getRecordedDocument());
+					Recording rec = new Recording();
+					rec.setRecordingHeader(recording.getRecordingHeader());
+					rec.setRecordedAudio(new RecordedAudio(newAudioStream));
+					rec.setRecordedEvents(recording.getRecordedEvents());
+					rec.setRecordedDocument(recording.getRecordedDocument());
 
-				RecordingFileWriter.write(rec, file, callback);
+					RecordingFileWriter.write(rec, file, callback);
 
-				newAudioStream.close();
+				}
 
 				if (file.equals(recording.getSourceFile())) {
 					// File overwritten. Need to update the audio stream.
@@ -316,6 +354,72 @@ public class RecordingFileService {
 				}
 			}
 		});
+	}
+
+
+	/**
+	 * Saves the part of the recording that is specified through the interval.
+	 * Removes the saved part from the current recording.
+	 *
+	 * @param file     The file to save the recording in
+	 * @param interval The interval of the recording that should be saved, in milliseconds
+	 * @param callback Progress callback for the saving progress
+	 * @return An async future completing the task
+	 */
+	public CompletableFuture<Void> savePartialRecording(File file, Interval<Long> interval, ProgressCallback callback) throws RecordingEditException {
+		return savePartialRecording(file, interval, callback, getSelectedRecording());
+	}
+
+	/**
+	 * Saves the part of the recording that is specified through the interval.
+	 * Removes the saved part from the current recording.
+	 *
+	 * @param file      The file to save the recording in
+	 * @param interval  The interval of the recording that should be saved, in milliseconds
+	 * @param callback  Progress callback for the saving progress
+	 * @param recording The recording that should be saved partially
+	 * @return An async future completing the task
+	 */
+	public CompletableFuture<Void> savePartialRecording(File file, Interval<Long> interval, ProgressCallback callback, Recording recording) throws RecordingEditException {
+		try {
+			Recording partial = new Recording(recording);
+
+			long duration = partial.getRecordingHeader().getDuration();
+			double start = (double) interval.getStart() / duration;
+			double end = (double) interval.getEnd() / duration;
+			CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+
+			return future.thenCompose(ignored -> {
+						// Checks whether the interval to get extracted starts in the beginning of the recording
+						// if it does not we have to cut out the section before the interval
+						if (start != 0) {
+							return cut(0, start, partial);
+						}
+						return CompletableFuture.completedFuture(null);
+					})
+					.thenCompose(ignored -> {
+						// Checks whether the interval to get extracted ends at the end of the recording
+						// if it does not we have to cut out the section before the interval
+						if (end != 1) {
+							return cut(end, 1, partial);
+						}
+						return CompletableFuture.completedFuture(null);
+					})
+					// Then we save the extracted part
+					.thenCompose(ignored -> saveRecording(partial, file, callback))
+					// And remove the same interval in the selected recording
+					.thenCompose(ignored -> CompletableFuture.runAsync(() -> {
+						try {
+							addEditAction(getSelectedRecording(), new CutAction(getSelectedRecording(), start, end, context.primarySelectionProperty()));
+						}
+						catch (RecordingEditException e) {
+							throw new RuntimeException(e);
+						}
+					}));
+		}
+		catch (IOException e) {
+			throw new RecordingEditException(e);
+		}
 	}
 
 	public CompletableFuture<Void> exportAudio(File file, ProgressCallback callback) {
@@ -415,5 +519,92 @@ public class RecordingFileService {
 		context.setCanDeletePage(document.getPageCount() > 1);
 		context.setCanRedo(recording.getEditManager().hasRedoActions());
 		context.setCanUndo(recording.getEditManager().hasUndoActions());
+	}
+
+
+	/**
+	 * Sets the timestamp of the page with the selected number, without affecting other parts of the recording,
+	 * like the audio or the total duration of the recording.
+	 *
+	 * @param timestamp  The new timestamp
+	 * @param pageNumber The number of the page to move the timestamp
+	 * @return An async future completing the task
+	 */
+	public CompletableFuture<Void> movePage(int timestamp, int pageNumber) {
+		return movePage(timestamp, pageNumber, getSelectedRecording());
+	}
+
+
+	/**
+	 * Sets the timestamp of the page with the selected number, without affecting other parts of the recording,
+	 * like the audio or the total duration of the recording.
+	 *
+	 * @param timestamp  The new timestamp
+	 * @param pageNumber The number of the page to move the timestamp
+	 * @param recording  The recording this should happen in
+	 * @return An async future completing the task
+	 */
+	public CompletableFuture<Void> movePage(int timestamp, int pageNumber, Recording recording) {
+		return CompletableFuture.runAsync(() -> {
+			try {
+				suspendPlayback();
+
+				addEditAction(recording, new MovePageAction(recording, pageNumber, timestamp));
+			}
+			catch (Exception e) {
+				throw new CompletionException(e);
+			}
+		});
+	}
+
+
+	/**
+	 * Removes the page with the selected number, without affecting other parts of the recording,
+	 * like the audio or the total duration of the recording.
+	 *
+	 * @param pageNumber The number of the page to remove
+	 * @return  An async future completing the task
+	 */
+	public CompletableFuture<Void> hidePage(int pageNumber) {
+		return hidePage(pageNumber, getSelectedRecording());
+	}
+
+
+	/**
+	 * Removes the page with the selected number, without affecting other parts of the recording,
+	 * like the audio or the total duration of the recording.
+	 *
+	 * @param pageNumber The number of the page to remove
+	 * @param recording  The recording this should happen in
+	 * @return An async future completing the task
+	 */
+	public CompletableFuture<Void> hidePage(int pageNumber, Recording recording) {
+		return CompletableFuture.runAsync(() -> {
+			try {
+				suspendPlayback();
+
+				addEditAction(recording, new HidePageAction(recording, pageNumber));
+			}
+			catch (Exception e) {
+				throw new CompletionException(e);
+			}
+		});
+	}
+
+	public CompletableFuture<Void> hideAndMoveNextPage(int pageNumber, int timestamp) {
+		return hideAndMoveNextPage(pageNumber, timestamp, getSelectedRecording());
+	}
+
+	public CompletableFuture<Void> hideAndMoveNextPage(int pageNumber, int timestamp, Recording recording) {
+		return CompletableFuture.runAsync(() -> {
+			try {
+				suspendPlayback();
+
+				addEditAction(recording, new HideAndMoveNextPageAction(recording, pageNumber, timestamp));
+			}
+			catch (Exception e) {
+				throw new CompletionException(e);
+			}
+		});
 	}
 }

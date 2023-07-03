@@ -21,6 +21,7 @@ package org.lecturestudio.presenter.api.view;
 import org.lecturestudio.core.app.Theme;
 import org.lecturestudio.core.beans.BooleanProperty;
 import org.lecturestudio.core.beans.DoubleProperty;
+import org.lecturestudio.core.beans.IntegerProperty;
 import org.lecturestudio.core.beans.ObjectProperty;
 import org.lecturestudio.core.geometry.Dimension2D;
 
@@ -46,6 +47,8 @@ public interface GeneralSettingsView extends SettingsBaseView {
 	void setTabletMode(BooleanProperty tabletMode);
 
 	void setSaveAnnotationsOnClose(BooleanProperty saveAnnotations);
+
+	void setPageSelectionDelay(IntegerProperty delay);
 
 	void setExtendedFullscreen(BooleanProperty extended);
 

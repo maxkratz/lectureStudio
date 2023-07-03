@@ -35,6 +35,7 @@ import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.dictionary.Dictionary;
 import org.lecturestudio.core.audio.AudioDeviceNotConnectedException;
+import org.lecturestudio.core.audio.bus.event.TextFontEvent;
 import org.lecturestudio.core.bus.EventBus;
 import org.lecturestudio.core.bus.event.CustomizeToolbarEvent;
 import org.lecturestudio.core.bus.event.DocumentEvent;
@@ -250,6 +251,8 @@ public class ToolbarPresenter extends Presenter<ToolbarView> {
 
 	public void setTextBoxFont(Font font) {
 		toolController.setTextFont(font);
+
+		eventBus.post(new TextFontEvent(font));
 	}
 
 	public void texTool() {
@@ -399,7 +402,22 @@ public class ToolbarPresenter extends Presenter<ToolbarView> {
 			document.setDocumentType(DocumentType.MESSAGE);
 			document.createPage();
 
-			documentService.addDocument(document);
+			Document prevDocument = null;
+
+			for (Document doc : documentService.getDocuments().asList()) {
+				if (doc.hashCode() == document.hashCode()) {
+					prevDocument = doc;
+					break;
+				}
+			}
+
+			if (nonNull(prevDocument)) {
+				documentService.replaceDocument(prevDocument, document);
+			}
+			else {
+				documentService.addDocument(document);
+			}
+
 			documentService.selectDocument(document);
 		}
 	}

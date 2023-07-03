@@ -32,6 +32,7 @@ import dev.onvoid.webrtc.media.video.VideoDevice;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.List;
+import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -48,18 +49,16 @@ import org.lecturestudio.core.beans.ChangeListener;
 import org.lecturestudio.core.codec.VideoCodecConfiguration;
 import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.model.Document;
-import org.lecturestudio.core.presenter.command.ClosePresenterCommand;
-import org.lecturestudio.core.presenter.command.ShowPresenterCommand;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.config.StreamConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.presenter.api.event.CameraStateEvent;
 import org.lecturestudio.presenter.api.event.ScreenShareEndEvent;
 import org.lecturestudio.presenter.api.event.ScreenShareStateEvent;
+import org.lecturestudio.presenter.api.event.StreamReconnectStateEvent;
 import org.lecturestudio.presenter.api.event.StreamingStateEvent;
 import org.lecturestudio.presenter.api.model.ScreenShareContext;
 import org.lecturestudio.presenter.api.net.ScreenShareProfile;
-import org.lecturestudio.presenter.api.presenter.ReconnectStreamPresenter;
 import org.lecturestudio.web.api.client.ClientFailover;
 import org.lecturestudio.web.api.client.TokenProvider;
 import org.lecturestudio.web.api.exception.StreamMediaException;
@@ -69,6 +68,7 @@ import org.lecturestudio.web.api.janus.JanusPeerConnectionMediaException;
 import org.lecturestudio.web.api.janus.JanusStateHandlerListener;
 import org.lecturestudio.web.api.janus.client.JanusWebSocketClient;
 import org.lecturestudio.web.api.message.SpeechBaseMessage;
+import org.lecturestudio.web.api.model.UserInfo;
 import org.lecturestudio.web.api.service.ServiceParameters;
 import org.lecturestudio.web.api.stream.StreamAudioContext;
 import org.lecturestudio.web.api.stream.StreamScreenContext;
@@ -140,14 +140,7 @@ public class WebRtcStreamService extends ExecutableBase {
 		this.recordingService = recordingService;
 		this.clientFailover = new ClientFailover();
 		this.clientFailover.addStateListener((oldState, newState) -> {
-			if (newState == ExecutableState.Started) {
-				context.getEventBus().post(new ShowPresenterCommand<>(
-						ReconnectStreamPresenter.class));
-			}
-			else if (newState == ExecutableState.Stopped) {
-				context.getEventBus().post(new ClosePresenterCommand(
-						ReconnectStreamPresenter.class));
-			}
+			context.getEventBus().post(new StreamReconnectStateEvent(newState));
 		});
 
 		eventRecorder.init();
@@ -158,7 +151,7 @@ public class WebRtcStreamService extends ExecutableBase {
 			return;
 		}
 
-		long requestId = message.getRequestId();
+		UUID requestId = message.getRequestId();
 		String userName = String.format("%s %s", message.getFirstName(),
 				message.getFamilyName());
 
@@ -175,8 +168,7 @@ public class WebRtcStreamService extends ExecutableBase {
 	}
 
 	public void startCameraStream() throws ExecutableException {
-		if (streamState != ExecutableState.Started
-			|| cameraState == ExecutableState.Started) {
+		if (streamState != ExecutableState.Started || cameraState == ExecutableState.Started) {
 			return;
 		}
 
@@ -197,6 +189,14 @@ public class WebRtcStreamService extends ExecutableBase {
 		streamContext.getVideoContext().setSendVideo(false);
 
 		setCameraState(ExecutableState.Stopped);
+	}
+
+	public void setCaptureLocalCameraVideo(boolean capture) {
+		if (cameraState != ExecutableState.Started) {
+			return;
+		}
+
+		streamContext.getVideoContext().setCaptureLocalVideo(capture);
 	}
 
 	public void setScreenShareContext(ScreenShareContext context) {
@@ -246,7 +246,7 @@ public class WebRtcStreamService extends ExecutableBase {
 		streamContext.getVideoContext().setReceiveVideo(mute);
 	}
 
-	public void stopPeerConnection(Long requestId) {
+	public void stopPeerConnection(UUID requestId) {
 		if (!started()) {
 			return;
 		}
@@ -330,6 +330,15 @@ public class WebRtcStreamService extends ExecutableBase {
 				}
 			}
 		});
+
+		UserInfo userInfo = streamProviderService.getUserInfo();
+
+		pContext.getUserPrivilegeService().setUserInfo(userInfo);
+		pContext.getUserPrivilegeService().setPrivileges(
+				streamProviderService.getUserPrivileges(course.getId())
+						.getPrivileges());
+
+		streamContext.setUserInfo(userInfo);
 
 		eventRecorder.setCourse(course);
 		eventRecorder.setStreamProviderService(streamProviderService);
@@ -537,7 +546,6 @@ public class WebRtcStreamService extends ExecutableBase {
 		AudioConfiguration audioConfig = config.getAudioConfig();
 		StreamConfiguration streamConfig = config.getStreamConfig();
 		VideoCodecConfiguration cameraConfig = streamConfig.getCameraCodecConfig();
-		VideoCodecConfiguration screenConfig = streamConfig.getScreenCodecConfig();
 
 		Rectangle2D cameraViewRect = cameraConfig.getViewRect();
 
@@ -561,13 +569,16 @@ public class WebRtcStreamService extends ExecutableBase {
 		audioContext.setRecordingDevice(audioCaptureDevice);
 		audioContext.setPlaybackDevice(audioPlaybackDevice);
 		audioContext.setPlaybackVolume(audioConfig.getPlaybackVolume());
-		audioContext.setFrameConsumer(this::processAudioFrame);
+		audioContext.setRemoteFrameConsumer(this::processAudioFrame);
 
 		videoContext.setSendVideo(streamConfig.getCameraEnabled());
 		videoContext.setReceiveVideo(true);
 		videoContext.setCaptureDevice(videoCaptureDevice);
 		videoContext.setBitrate(cameraConfig.getBitRate());
-		videoContext.setFrameConsumer(videoFrameEvent -> {
+		videoContext.setRemoteFrameConsumer(videoFrameEvent -> {
+			context.getEventBus().post(videoFrameEvent);
+		});
+		videoContext.setLocalFrameConsumer(videoFrameEvent -> {
 			context.getEventBus().post(videoFrameEvent);
 		});
 

@@ -23,25 +23,23 @@ import static java.util.Objects.nonNull;
 
 import java.awt.Insets;
 import java.awt.Rectangle;
-import java.awt.Shape;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionAdapter;
 import java.awt.font.FontRenderContext;
 import java.awt.font.LineBreakMeasurer;
 import java.awt.font.TextAttribute;
-import java.awt.font.TextHitInfo;
 import java.awt.font.TextLayout;
 import java.awt.geom.AffineTransform;
 import java.text.AttributedCharacterIterator;
 import java.text.AttributedString;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import javax.swing.JComponent;
 import javax.swing.JTextArea;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.plaf.basic.BasicTextAreaUI;
 
 import org.lecturestudio.core.geometry.Point2D;
@@ -53,12 +51,13 @@ import org.lecturestudio.core.text.TextAttributes;
 import org.lecturestudio.core.view.TextBoxView;
 import org.lecturestudio.swing.beans.Binding;
 import org.lecturestudio.swing.components.TextInputPageObject;
+import org.lecturestudio.swing.converter.ColorConverter;
 import org.lecturestudio.swing.converter.FontConverter;
 import org.lecturestudio.swing.util.SwingUtils;
 
 public class SwingTextBoxView extends TextInputPageObject<TextShape> implements TextBoxView {
 
-	private static final java.awt.Color THEME_COLOR = new java.awt.Color(40, 190, 140);
+	private static final java.awt.Color THEME_COLOR = new java.awt.Color(253, 224, 71, 125);
 
 	private Binding textBinding;
 
@@ -125,6 +124,13 @@ public class SwingTextBoxView extends TextInputPageObject<TextShape> implements 
 	public void setTextFont(Font font) {
 		if (nonNull(getPageShape())) {
 			getPageShape().setFont(font);
+
+			TextAttributes attributes = font.getTextAttributes();
+
+			if (nonNull(attributes)) {
+				getPageShape().getTextAttributes().setStrikethrough(attributes.isStrikethrough());
+				getPageShape().getTextAttributes().setUnderline(attributes.isUnderline());
+			}
 		}
 	}
 
@@ -158,18 +164,14 @@ public class SwingTextBoxView extends TextInputPageObject<TextShape> implements 
 		Rectangle textBounds = textArea.getBounds();
 		Rectangle2D shapeRect = shape.getBounds();
 
-		double xOffset = textBounds.getMinX() + padding.left + 1;
+		double xOffset = textBounds.getMinX() + padding.left + 4;
 		double yOffset = textBounds.getMinY() + padding.top + 1;
-
-		if (!getFocus()) {
-//			yOffset = padding.top + 1;
-		}
 
 		double s = transform.getScaleX();
 		double tx = transform.getTranslateX();
 		double ty = transform.getTranslateY();
-		double x = Math.ceil((shapeRect.getX() + tx) * s) - xOffset;
-		double y = Math.ceil((shapeRect.getY() + ty) * s) - yOffset;
+		double x = Math.ceil((shapeRect.getX() - tx) * s) - xOffset;
+		double y = Math.ceil((shapeRect.getY() - ty) * s) - yOffset;
 
 		Font font = shape.getFont().clone();
 		font.setSize(fontSize * s);
@@ -187,98 +189,7 @@ public class SwingTextBoxView extends TextInputPageObject<TextShape> implements 
 
 	@Override
 	protected JComponent createContent() {
-		textArea = new JTextArea() {
-
-			List<TextLayout> layouts = new ArrayList<>();
-
-			float wrapWidth;
-
-			Shape caret;
-
-			int hit1, hit2;
-
-
-			{
-//				addMouseListener(new MouseHandler());
-//				addMouseMotionListener(new MouseMotionHandler());
-			}
-
-//			@Override
-//			protected void paintComponent(Graphics g) {
-//				Graphics2D g2d = (Graphics2D) g;
-//				g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS,
-//						RenderingHints.VALUE_FRACTIONALMETRICS_ON);
-//
-//				layouts = getTextLayouts();
-//
-//				float x = 3, y = 3;
-//
-//				for (TextLayout layout : layouts) {
-//					float dx = layout.isLeftToRight() ? 0 : wrapWidth - layout.getAdvance();
-//
-//					y += layout.getAscent();
-//
-//					layout.draw(g2d, x + dx, y);
-//
-//					y += layout.getDescent() + layout.getLeading();
-//				}
-//
-//				if (nonNull(caret)) {
-//					g2d.setColor(java.awt.Color.BLUE);
-//					g2d.draw(caret);
-//				}
-//			}
-
-			private int getHitLocation(int mouseX, int mouseY) {
-				layouts = getTextLayouts();
-
-				FontRenderContext frc = new FontRenderContext(null, true, true);
-				float x = 3, y = 3;
-				int hit = -1;
-
-				for (TextLayout layout : layouts) {
-					float dx = layout.isLeftToRight() ? 0 : wrapWidth - layout.getAdvance();
-
-					y += layout.getAscent();
-
-					Rectangle bounds = layout.getPixelBounds(frc, x + dx, y);
-
-					if (bounds.y <= mouseY && mouseY <= bounds.y + bounds.height) {
-						TextHitInfo hitInfo = layout.hitTestChar(mouseX, mouseY);
-						hit = hitInfo.getInsertionIndex();
-
-						AffineTransform at = AffineTransform.getTranslateInstance(x + dx, y);
-						Shape[] caretShapes = layout.getCaretShapes(hit);
-
-						caret = at.createTransformedShape(caretShapes[0]);
-						break;
-					}
-
-					y += layout.getDescent() + layout.getLeading();
-				}
-
-				return hit;
-			}
-
-			class MouseHandler extends MouseAdapter {
-
-				@Override
-				public void mousePressed(MouseEvent e) {
-					hit1 = getHitLocation(e.getX(), e.getY());
-					hit2 = hit1;
-					repaint();
-				}
-
-			}
-
-			class MouseMotionHandler extends MouseMotionAdapter {
-
-				public void mouseDragged(MouseEvent e) {
-					hit2 = getHitLocation(e.getX(), e.getY());
-					repaint();
-				}
-			}
-		};
+		textArea = new JTextArea();
 		textArea.setUI(new BasicTextAreaUI());
 		textArea.setOpaque(false);
 		textArea.setForeground(new java.awt.Color(0, 0, 0, 0));
@@ -297,16 +208,90 @@ public class SwingTextBoxView extends TextInputPageObject<TextShape> implements 
 				setFocus(false);
 			}
 		});
+		textArea.getDocument().addDocumentListener(new DocumentListener() {
+
+			@Override
+			public void insertUpdate(DocumentEvent e) {
+				changedUpdate(e);
+			}
+
+			@Override
+			public void removeUpdate(DocumentEvent e) {
+				changedUpdate(e);
+			}
+
+			@Override
+			public void changedUpdate(DocumentEvent e) {
+				updateShapeSize(textArea.getText());
+			}
+		});
 
 		return textArea;
 	}
 
 	@Override
 	protected void onRelocateShape(Point2D location) {
+		TextShape shape = getPageShape();
+
 		getPageShape().setLocation(location);
+
+		// Add some margin to the changed location.
+		AffineTransform transform = getPageTransform();
+		double m = 10 / transform.getScaleX();
+
+		shape.getDirtyBounds().setLocation(location.getX() - m, location.getY() - m);
 	}
 
-	float wrapWidth;
+	private void updateShapeSize(String text) {
+		TextShape shape = getPageShape();
+		AffineTransform transform = getPageTransform();
+
+		if (isNull(transform)) {
+			return;
+		}
+
+		AffineTransform affinetransform = new AffineTransform();
+		FontRenderContext frc = new FontRenderContext(affinetransform, true, true);
+
+		org.lecturestudio.core.text.Font f = shape.getFont().clone();
+		f.setSize(f.getSize() * transform.getScaleX());
+
+		java.awt.Font font = FontConverter.INSTANCE.to(f);
+
+		Map<TextAttribute, Object> attrs = (Map<TextAttribute, Object>) font.getAttributes();
+		attrs.put(TextAttribute.UNDERLINE, toAwtFontUnderline(shape.isUnderline()));
+		attrs.put(TextAttribute.STRIKETHROUGH, shape.isStrikethrough());
+		attrs.put(TextAttribute.FOREGROUND, ColorConverter.INSTANCE.to(shape.getTextColor()));
+
+		String[] lines = text.split("\\n");
+
+		double layoutX = 0;
+		double layoutY = 0;
+
+		for (String line : lines) {
+			if (line.isEmpty()) {
+				line = " ";
+			}
+
+			TextLayout layout = new TextLayout(line, attrs, frc);
+
+			layoutX = Math.max(layoutX, layout.getBounds().getWidth());
+			layoutY += layout.getAscent() + layout.getDescent() + layout.getLeading();
+		}
+
+		Rectangle2D shapeBounds = shape.getBounds();
+		Rectangle2D dirtyBounds = shapeBounds.clone();
+
+		shapeBounds.setSize(layoutX / transform.getScaleX(), layoutY / transform.getScaleY());
+		dirtyBounds.union(shapeBounds);
+
+		// Add some margin to the changed rectangle.
+		double m = 10 / transform.getScaleX();
+		dirtyBounds.setRect(dirtyBounds.getX() - m, dirtyBounds.getY() - m,
+				dirtyBounds.getWidth() + 2 * m, dirtyBounds.getHeight() + 2 * m);
+
+		shape.setDirtyBounds(dirtyBounds);
+	}
 
 	private List<TextLayout> getTextLayouts() {
 		List<TextLayout> layouts = new ArrayList<>();
@@ -338,7 +323,7 @@ public class SwingTextBoxView extends TextInputPageObject<TextShape> implements 
 		LineBreakMeasurer measurer = new LineBreakMeasurer(iterator, frc);
 		measurer.setPosition(start);
 
-		wrapWidth = getWrappingWidth(text, frc, textFont);
+		float wrapWidth = getWrappingWidth(text, frc, textFont);
 		int limit;
 		int newLineIndex;
 
@@ -365,5 +350,14 @@ public class SwingTextBoxView extends TextInputPageObject<TextShape> implements 
 		}
 
 		return (float) wrapWidth;
+	}
+
+	public static Number toAwtFontUnderline(boolean underline) {
+		if (underline) {
+			return TextAttribute.UNDERLINE_ON;
+		}
+		else {
+			return -1;
+		}
 	}
 }

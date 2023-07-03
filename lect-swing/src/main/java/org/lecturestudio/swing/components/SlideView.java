@@ -358,7 +358,7 @@ public class SlideView extends JComponent implements org.lecturestudio.core.view
 			return;
 		}
 
-		canvasBounds.setRect(getX(), getY(), size.getWidth(), size.getHeight());
+		canvasBounds.setRect(0, 0, size.getWidth(), size.getHeight());
 
 		renderer.resizeBuffer(size);
 
@@ -513,19 +513,6 @@ public class SlideView extends JComponent implements org.lecturestudio.core.view
 
 	private void repaintView(int x, int y, int w, int h) {
 		surfaceView.repaint(x, y, w, h);
-//		if (SwingUtilities.isEventDispatchThread()) {
-//			surfaceView.paintImmediately(x, y, w, h);
-//		}
-//		else {
-//			try {
-//				SwingUtilities.invokeAndWait(() -> {
-//					surfaceView.paintImmediately(x, y, w, h);
-//				});
-//			}
-//			catch (Exception e) {
-//				e.printStackTrace();
-//			}
-//		}
 	}
 
 	private void repaintView(Rectangle2D rect) {

@@ -33,11 +33,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 import javax.inject.Inject;
 
+import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.dictionary.Dictionary;
@@ -75,8 +75,10 @@ import org.lecturestudio.presenter.api.config.StreamConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
 import org.lecturestudio.presenter.api.event.MessengerStateEvent;
 import org.lecturestudio.presenter.api.event.QuizStateEvent;
+import org.lecturestudio.presenter.api.event.RecordingStateEvent;
 import org.lecturestudio.presenter.api.event.ScreenShareEndEvent;
 import org.lecturestudio.presenter.api.event.ScreenShareSelectEvent;
+import org.lecturestudio.presenter.api.event.StreamReconnectStateEvent;
 import org.lecturestudio.presenter.api.event.StreamingStateEvent;
 import org.lecturestudio.presenter.api.input.Shortcut;
 import org.lecturestudio.presenter.api.model.ScreenShareContext;
@@ -84,6 +86,7 @@ import org.lecturestudio.presenter.api.presenter.command.StartScreenSharingComma
 import org.lecturestudio.presenter.api.recording.RecordingBackup;
 import org.lecturestudio.presenter.api.service.BookmarkService;
 import org.lecturestudio.presenter.api.service.RecordingService;
+import org.lecturestudio.presenter.api.service.ScreenShareService;
 import org.lecturestudio.presenter.api.service.ScreenSourceService;
 import org.lecturestudio.presenter.api.service.StreamService;
 import org.lecturestudio.presenter.api.util.SaveDocumentsHandler;
@@ -120,6 +123,8 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 
 	private final ScreenSourceService screenSourceService;
 
+	private final ScreenShareService screenShareService;
+
 	private SlidesPresenter slidesPresenter;
 
 	/** The waiting notification. */
@@ -134,7 +139,8 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 			DocumentService documentService,
 			BookmarkService bookmarkService,
 			RecordingService recordingService,
-			StreamService streamService) {
+			StreamService streamService,
+			ScreenShareService screenShareService) {
 		super(context, view);
 
 		this.presentationController = presentationController;
@@ -145,6 +151,7 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 		this.recordingService = recordingService;
 		this.streamService = streamService;
 		this.screenSourceService = new ScreenSourceService();
+		this.screenShareService = screenShareService;
 		this.viewMap = new ObservableHashMap<>();
 		this.shortcutMap = new HashMap<>();
 		this.contexts = new ArrayList<>();
@@ -175,7 +182,15 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 		presenterContext.streamStartedProperty().addListener((o, oldValue, newValue) -> {
 			streamService.enableStream(newValue);
 
-			if (!newValue) {
+			if (newValue) {
+				if (screenShareService.isScreenCaptureActive()) {
+					// Local screen share active. Stop local and start screen share with the stream.
+					stopLocalScreenCapture();
+
+					streamService.enableScreenSharing(true);
+				}
+			}
+			else {
 				// Stop screen-share as well.
 				streamService.enableScreenSharing(false);
 			}
@@ -186,7 +201,8 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 
 			if (!newValue) {
 				// Only update documents with screen dumps if the service is active.
-				if (streamService.getScreenShareState() == ExecutableState.Started) {
+				if (streamService.getScreenShareState() == ExecutableState.Started
+					|| screenShareService.isScreenCaptureActive()) {
 					try {
 						ScreenDocumentCreator.create(documentService, shareContext.getSource());
 
@@ -203,10 +219,23 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 						logException(e, "Create screen-document failed");
 					}
 				}
+
+				// Pause screen recording.
+				suspendScreenRecording();
+				// Stop screen capturing.
+				stopLocalScreenCapture();
 			}
 			else {
-				// Set the screen source related to the selected screen document.
-				streamService.setScreenShareContext(shareContext);
+				startScreenRecording(shareContext);
+
+				if (!presenterContext.getStreamStarted()) {
+					// Start local screen capture only if we are not streaming.
+					startLocalScreenCapture(shareContext);
+				}
+				else {
+					// Set the screen source related to the selected screen document.
+					streamService.setScreenShareContext(shareContext);
+				}
 			}
 
 			streamService.enableScreenSharing(newValue);
@@ -294,7 +323,8 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 			// Check for a new version.
 			CompletableFuture.runAsync(() -> {
 				try {
-					VersionChecker versionChecker = new VersionChecker();
+					VersionChecker versionChecker = new VersionChecker(
+							"lectureStudio", "lectureStudio");
 
 					if (versionChecker.newVersionAvailable()) {
 						GitHubRelease release = versionChecker.getLatestRelease();
@@ -438,8 +468,6 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 			PresenterContext presenterContext = (PresenterContext) context;
 			presenterContext.setAttendeesCount(0);
 			presenterContext.getSpeechRequests().clear();
-
-			screenSourceService.clear();
 		}
 		else if (state == ExecutableState.Error) {
 			showError("stream.closed.by.remote.host.title", "stream.closed.by.remote.host");
@@ -447,13 +475,41 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 	}
 
 	@Subscribe
+	public void onEvent(final StreamReconnectStateEvent event) {
+		ExecutableState state = event.getState();
+
+		if (state == ExecutableState.Started) {
+			context.getEventBus().post(new ShowPresenterCommand<>(
+					ReconnectStreamPresenter.class));
+		}
+		else if (state == ExecutableState.Stopped) {
+			context.getEventBus().post(new ClosePresenterCommand(
+					ReconnectStreamPresenter.class));
+		}
+		else if (state == ExecutableState.Error) {
+			showError("stream.closed.by.remote.host.title", "stream.closed.by.remote.host");
+		}
+	}
+
+	@Subscribe
+	public void onEvent(final RecordingStateEvent event) {
+		if (event.stopped()) {
+			stopScreenRecording();
+		}
+	}
+
+	@Subscribe
 	public void onEvent(final ScreenShareSelectEvent event) {
+		PresenterContext presenterContext = (PresenterContext) context;
+
 		context.getEventBus()
 			.post(new StartScreenSharingCommand((context) -> {
 				CompletableFuture.runAsync(() -> {
-					streamService.setScreenShareContext(context);
-
 					try {
+						if (presenterContext.getStreamStarted()) {
+							streamService.setScreenShareContext(context);
+						}
+
 						ScreenDocumentCreator.create(documentService, context.getSource());
 
 						// Register created screen document with the screen source.
@@ -461,7 +517,7 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 								documentService.getDocuments().getSelectedDocument(),
 								context);
 					}
-					catch (IOException e) {
+					catch (Exception e) {
 						throw new RuntimeException(e);
 					}
 				}).exceptionally(e -> {
@@ -474,7 +530,16 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 
 	@Subscribe
 	public void onEvent(final ScreenShareEndEvent event) {
-		streamService.enableScreenSharing(false);
+		PresenterContext presenterContext = (PresenterContext) context;
+
+		if (!presenterContext.getStreamStarted()) {
+			stopLocalScreenCapture();
+		}
+		else {
+			streamService.enableScreenSharing(false);
+		}
+
+		stopScreenRecording();
 
 		// Remove document.
 		Document screenDoc = documentService.getDocuments()
@@ -708,11 +773,9 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 
 	private void onViewFocus(boolean hasFocus) {
 		if (hasFocus) {
-			// Delay execution to give the screen-capturer a chance to process internal state.
-			CompletableFuture.runAsync(() -> {
-				PresenterContext ctx = (PresenterContext) context;
-				ctx.setScreenSharingStarted(false);
-			}, CompletableFuture.delayedExecutor(1500, TimeUnit.MILLISECONDS));
+			// Stop screen sharing whe the main window has gained focus.
+			PresenterContext ctx = (PresenterContext) context;
+			ctx.setScreenSharingStarted(false);
 		}
 	}
 
@@ -843,5 +906,36 @@ public class MainPresenter extends org.lecturestudio.core.presenter.MainPresente
 		}
 
 		return null;
+	}
+
+	private void startLocalScreenCapture(ScreenShareContext shareContext) {
+		try {
+			screenShareService.startScreenCapture(shareContext);
+		}
+		catch (ExecutableException e) {
+			handleException(e, "Set screen-source failed",
+					"stream.screen.share.error");
+		}
+	}
+
+	private void stopLocalScreenCapture() {
+		screenShareService.stopScreenCapture();
+	}
+
+	private void startScreenRecording(ScreenShareContext shareContext) {
+		// Record screen if we are actually recording a lecture.
+		if (!recordingService.started()) {
+			return;
+		}
+
+		screenShareService.startScreenRecording(shareContext);
+	}
+
+	private void suspendScreenRecording() {
+		screenShareService.suspendScreenRecording();
+	}
+
+	private void stopScreenRecording() {
+		screenShareService.stopScreenRecording();
 	}
 }

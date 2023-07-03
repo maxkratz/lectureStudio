@@ -47,6 +47,7 @@ public class ViewModule extends AbstractModule {
 		bind(DirectoryChooserView.class).to(FxDirectoryChooserView.class);
 		bind(FileChooserView.class).to(FxFileChooserView.class);
 		bind(NotificationView.class).to(FxNotificationView.class);
+		bind(ConfirmationNotificationView.class).to(FxConfirmationNotificationView.class);
 		bind(NotificationPopupView.class).to(FxNotificationPopupView.class);
 		bind(NotificationPopupManager.class).to(FxNotificationPopupManager.class);
 
@@ -65,6 +66,7 @@ public class ViewModule extends AbstractModule {
 		bind(ProgressDialogView.class).to(FxProgressDialogView.class);
 		bind(QuitSaveRecordingView.class).to(FxQuitSaveRecordingView.class);
 		bind(ReplacePageView.class).to(FxReplacePageView.class);
+		bind(SplitRecordingView.class).to(FxSplitRecordingView.class);
 		bind(SettingsView.class).to(FxSettingsView.class);
 		bind(SlidesView.class).to(FxSlidesView.class);
 		bind(SoundSettingsView.class).to(FxSoundSettingsView.class);

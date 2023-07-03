@@ -32,6 +32,7 @@ import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.dictionary.Dictionary;
 import org.lecturestudio.core.beans.BooleanProperty;
 import org.lecturestudio.core.beans.IntegerProperty;
+import org.lecturestudio.core.beans.ObjectProperty;
 import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.Page;
 import org.lecturestudio.core.model.RecentDocument;
@@ -41,6 +42,7 @@ import org.lecturestudio.core.view.ConsumerAction;
 import org.lecturestudio.core.view.PresentationParameter;
 import org.lecturestudio.presenter.api.model.Bookmark;
 import org.lecturestudio.presenter.api.model.Bookmarks;
+import org.lecturestudio.presenter.api.model.MessageBarPosition;
 import org.lecturestudio.presenter.api.service.QuizWebServiceState;
 import org.lecturestudio.presenter.api.view.MenuView;
 import org.lecturestudio.swing.util.SwingUtils;
@@ -105,6 +107,12 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 	private JRadioButtonMenuItem participantsPositionLeftMenuItem;
 
 	private JRadioButtonMenuItem participantsPositionRightMenuItem;
+
+	private JMenu previewPositionMenu;
+
+	private JRadioButtonMenuItem previewPositionLeftMenuItem;
+
+	private JRadioButtonMenuItem previewPositionRightMenuItem;
 
 	private JMenuItem newWhiteboardMenuItem;
 
@@ -172,7 +180,6 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 		final boolean isPdf = nonNull(doc) && doc.isPDF();
 		final boolean isWhiteboard = nonNull(doc) && doc.isWhiteboard();
 
-		// TODO: Einträge ausgrauen anzeigen
 		SwingUtils.invoke(() -> {
 			closeDocumentMenuItem.setEnabled(hasDocument);
 			saveDocumentsMenuItem.setEnabled(hasDocument);
@@ -193,6 +200,7 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 			externalWindowsMenu.setEnabled(hasDocument);
 			messagesPositionMenu.setEnabled(hasDocument);
 			participantsPositionMenu.setEnabled(hasDocument);
+			previewPositionMenu.setEnabled(hasDocument);
 		});
 	}
 
@@ -422,6 +430,18 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 	}
 
 	@Override
+	public void bindPreviewPosition(ObjectProperty<MessageBarPosition> position) {
+		setPreviewPosition(position.get());
+
+		position.addListener((o, oldPos, newPos) -> {
+			setPreviewPosition(newPos);
+		});
+
+		previewPositionLeftMenuItem.addActionListener(e -> position.set(MessageBarPosition.LEFT));
+		previewPositionRightMenuItem.addActionListener(e -> position.set(MessageBarPosition.RIGHT));
+	}
+
+	@Override
 	public void setOnNewWhiteboard(Action action) {
 		SwingUtils.bindAction(newWhiteboardMenuItem, action);
 	}
@@ -542,6 +562,30 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 
 			setIndicatorState(streamIndicatorMenu, state);
 			setIndicatorState(speechIndicatorMenu, state);
+
+			streamIndicatorMenu.setBackground(started ?
+					Color.decode("#D1FAE5") :
+					Color.decode("#FEE2E2"));
+
+			streamIndicatorMenu.setToolTipText(started ?
+					dict.get("menu.stream.online") :
+					dict.get("menu.stream.offline"));
+		});
+	}
+
+	@Override
+	public void setStreamReconnectState(ExecutableState state) {
+		// Reconnection procedure started.
+		final boolean started = state == ExecutableState.Started;
+
+		SwingUtils.invoke(() -> {
+			streamIndicatorMenu.setBackground(!started ?
+					Color.decode("#D1FAE5") :
+					Color.decode("#FEE2E2"));
+
+			streamIndicatorMenu.setToolTipText(!started ?
+					dict.get("menu.stream.online") :
+					dict.get("menu.stream.offline"));
 		});
 	}
 
@@ -673,15 +717,6 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 				dict.get("menu.stream.microphone.stop"));
 		setStateText(enableStreamCameraMenuItem, dict.get("menu.stream.camera.start"),
 				dict.get("menu.stream.camera.stop"));
-
-		final ButtonGroup messagesPositionButtonGroup = new ButtonGroup();
-		messagesPositionButtonGroup.add(messagesPositionLeftMenuItem);
-		messagesPositionButtonGroup.add(messagesPositionBottomMenuItem);
-		messagesPositionButtonGroup.add(messagesPositionRightMenuItem);
-
-		final ButtonGroup participantsPositionButtonGroup = new ButtonGroup();
-		participantsPositionButtonGroup.add(participantsPositionLeftMenuItem);
-		participantsPositionButtonGroup.add(participantsPositionRightMenuItem);
 	}
 
 	private void setStateText(AbstractButton button, String start, String stop) {
@@ -694,10 +729,12 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 		if (state == ExecutableState.Started) {
 			styleable.setOpaque(true);
 			styleable.setBackground(new Color(210, 210, 210));
-		} else if (state == ExecutableState.Suspended) {
+		}
+		else if (state == ExecutableState.Suspended) {
 			styleable.setOpaque(true);
 			styleable.setBackground(new Color(245, 138, 0));
-		} else if (state == ExecutableState.Stopped || state == ExecutableState.Error) {
+		}
+		else if (state == ExecutableState.Stopped || state == ExecutableState.Error) {
 			styleable.setOpaque(false);
 			styleable.setBackground(null);
 			styleable.setText("");
@@ -708,6 +745,13 @@ public class SwingMenuView extends JMenuBar implements MenuView {
 	private void updateRecTimeLabel(ExecutableState state) {
 		if (state == ExecutableState.Stopped) {
 			recordIndicatorMenu.setText(null);
+		}
+	}
+
+	private void setPreviewPosition(MessageBarPosition position) {
+		switch (position) {
+			case LEFT -> previewPositionLeftMenuItem.setSelected(true);
+			case RIGHT -> previewPositionRightMenuItem.setSelected(true);
 		}
 	}
 }

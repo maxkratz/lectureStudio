@@ -33,6 +33,7 @@ import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.configuration.ToolConfiguration;
 import org.lecturestudio.core.app.configuration.WhiteboardConfiguration;
+import org.lecturestudio.core.audio.bus.event.TextColorEvent;
 import org.lecturestudio.core.bus.event.BusEvent;
 import org.lecturestudio.core.bus.event.DocumentEvent;
 import org.lecturestudio.core.bus.event.PageEvent;
@@ -140,7 +141,11 @@ public class ToolController extends Controller implements ToolContext {
 		StrokeSettings ellipseSettings = new StrokeSettings(toolConfig.getEllipseSettings());
 		TextSelectionSettings textSelectionSettings = new TextSelectionSettings(toolConfig.getTextSelectionSettings());
 		TextSettings textSettings = new TextSettings(toolConfig.getTextSettings());
-		LatexToolSettings latexSettings = new LatexToolSettings(toolConfig.getLatexSettings());
+
+		// Live editable property for text-boxes.
+		textSettings.colorProperty().addListener((o, oldColor, newColor) -> {
+			context.getEventBus().post(new TextColorEvent(newColor));
+		});
 
 		// Bind controller settings to configuration settings.
 		toolConfig.getPenSettings().widthProperty().addListener((observable, oldValue, newValue) -> penSettings.setWidth(newValue));
@@ -161,7 +166,6 @@ public class ToolController extends Controller implements ToolContext {
 		paintSettings.put(ToolType.ELLIPSE, ellipseSettings);
 		paintSettings.put(ToolType.TEXT_SELECTION, textSelectionSettings);
 		paintSettings.put(ToolType.TEXT, textSettings);
-		paintSettings.put(ToolType.LATEX, latexSettings);
 	}
 
 	@Subscribe
@@ -268,7 +272,7 @@ public class ToolController extends Controller implements ToolContext {
 	/**
 	 * Get paint settings for the specified tool type.
 	 *
-	 * @param toolType The type of a tool for which to retrieve the settings.
+	 * @param toolType The type of tool for which to retrieve the settings.
 	 * @param <T>      The type of the settings object.
 	 *
 	 * @return paint settings for the specified tool type.
@@ -418,23 +422,25 @@ public class ToolController extends Controller implements ToolContext {
 	 * Select the select tool.
 	 */
 	public void selectSelectTool() {
-		Tool selectedTool = getSelectedTool();
+		setTool(new SelectTool(this));
 
-		if (isNull(selectedTool)) {
-			selectSelectionTool();
-			return;
-		}
-
-		// Toggle in cycle.
-		if (selectedTool.getType() == ToolType.SELECT) {
-			selectGroupSelectionTool();
-		}
-		else if (selectedTool.getType() == ToolType.SELECT_GROUP) {
-			selectCloneTool();
-		}
-		else {
-			selectSelectionTool();
-		}
+//		Tool selectedTool = getSelectedTool();
+//
+//		if (isNull(selectedTool)) {
+//			selectSelectionTool();
+//			return;
+//		}
+//
+//		// Toggle in cycle.
+//		if (selectedTool.getType() == ToolType.SELECT) {
+//			selectGroupSelectionTool();
+//		}
+//		else if (selectedTool.getType() == ToolType.SELECT_GROUP) {
+//			selectCloneTool();
+//		}
+//		else {
+//			selectSelectionTool();
+//		}
 	}
 
 	/**
@@ -591,53 +597,6 @@ public class ToolController extends Controller implements ToolContext {
 			Page newPage = document.getPage(pageNumber);
 
 			pushEvent(new PageEvent(newPage, oldPage, PageEvent.Type.SELECTED));
-		}
-	}
-
-	/**
-	 * Create a page on the active whiteboard. Does nothing if the active document is not a whiteboard.
-	 */
-	public void createWhiteboardPage() {
-		Document selectedDocument = documentService.getDocuments().getSelectedDocument();
-
-		if (nonNull(selectedDocument) /*&& selectedDocument.isWhiteboard()*/) {
-			Page page = selectedDocument.createPage();
-
-			pushEvent(new PageEvent(page, PageEvent.Type.CREATED));
-
-			selectPage(selectedDocument, page.getPageNumber());
-		}
-	}
-
-	/**
-	 * Remove a page with the specified page number on the active whiteboard.
-	 * Does nothing if the selected document is not a whiteboard. If this would
-	 * lead to an empty whiteboard, a new blank page is set as the first page of
-	 * the whiteboard.
-	 *
-	 * @param pageNumber The number of the page to remove from the whiteboard.
-	 */
-	public void deleteWhiteboardPage(int pageNumber) {
-		Document selectedDocument = documentService.getDocuments().getSelectedDocument();
-
-		if (selectedDocument.isWhiteboard()) {
-			if (selectedDocument.getPageCount() > 1) {
-				Page page = selectedDocument.getPage(pageNumber);
-
-				if (selectedDocument.removePage(page)) {
-					pushEvent(new PageEvent(page, PageEvent.Type.REMOVED));
-
-					// Check if the removed page was selected.
-					if (pageNumber == selectedDocument.getPages().size()) {
-						pageNumber--;
-					}
-
-					selectPage(selectedDocument, pageNumber);
-				}
-			}
-			else {
-				selectedDocument.getCurrentPage().reset();
-			}
 		}
 	}
 

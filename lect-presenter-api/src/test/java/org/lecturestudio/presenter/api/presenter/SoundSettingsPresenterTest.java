@@ -44,9 +44,6 @@ class SoundSettingsPresenterTest extends PresenterTest {
 
 	@BeforeEach
 	void setup() {
-		AudioConfiguration config = context.getConfiguration().getAudioConfig();
-		config.setCaptureDeviceName("dummy");
-
 		view = new SoundSettingsMockView();
 
 		SoundSettingsPresenter presenter = new SoundSettingsPresenter(context, view, audioSystemProvider);
@@ -59,6 +56,7 @@ class SoundSettingsPresenterTest extends PresenterTest {
 
 		AudioConfiguration config = context.getConfiguration().getAudioConfig();
 		AudioConfiguration defaultConfig = new DefaultConfiguration().getAudioConfig();
+		defaultConfig.setCaptureDeviceName("dummy");
 
 		assertEquals(defaultConfig.getCaptureDeviceName(), config.getCaptureDeviceName());
 		assertEquals(defaultConfig.getDefaultRecordingVolume(), config.getDefaultRecordingVolume());
@@ -94,6 +92,12 @@ class SoundSettingsPresenterTest extends PresenterTest {
 
 		@Override
 		public void setAudioPlaybackDevices(AudioDevice[] playbackDevices) {
+
+		}
+
+		@Override
+		public void bindAudioCaptureNoiseSuppressionLevelEnabled(
+				BooleanProperty enable) {
 
 		}
 

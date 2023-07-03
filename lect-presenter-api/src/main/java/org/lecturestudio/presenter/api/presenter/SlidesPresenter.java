@@ -27,6 +27,8 @@ import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.configuration.DisplayConfiguration;
 import org.lecturestudio.core.app.configuration.WhiteboardConfiguration;
+import org.lecturestudio.core.audio.bus.event.TextColorEvent;
+import org.lecturestudio.core.audio.bus.event.TextFontEvent;
 import org.lecturestudio.core.bus.EventBus;
 import org.lecturestudio.core.bus.event.DocumentEvent;
 import org.lecturestudio.core.bus.event.PageEvent;
@@ -48,6 +50,7 @@ import org.lecturestudio.core.model.shape.TextShape;
 import org.lecturestudio.core.presenter.Presenter;
 import org.lecturestudio.core.recording.DocumentRecorder;
 import org.lecturestudio.core.service.DocumentService;
+import org.lecturestudio.core.text.Font;
 import org.lecturestudio.core.tool.ToolType;
 import org.lecturestudio.core.util.ListChangeListener;
 import org.lecturestudio.core.util.ObservableList;
@@ -63,13 +66,14 @@ import org.lecturestudio.presenter.api.model.MessageDocument;
 import org.lecturestudio.presenter.api.service.RecordingService;
 import org.lecturestudio.presenter.api.service.WebRtcStreamService;
 import org.lecturestudio.presenter.api.service.WebService;
+import org.lecturestudio.presenter.api.service.WebServiceInfo;
 import org.lecturestudio.presenter.api.stylus.StylusHandler;
 import org.lecturestudio.presenter.api.view.PageObjectRegistry;
 import org.lecturestudio.presenter.api.view.SlidesView;
 import org.lecturestudio.swing.model.ExternalWindowPosition;
 import org.lecturestudio.web.api.event.PeerStateEvent;
-import org.lecturestudio.web.api.event.PeerVideoFrameEvent;
-import org.lecturestudio.web.api.event.ScreenVideoFrameEvent;
+import org.lecturestudio.web.api.event.RemoteVideoFrameEvent;
+import org.lecturestudio.web.api.event.LocalScreenVideoFrameEvent;
 import org.lecturestudio.web.api.message.CoursePresenceMessage;
 import org.lecturestudio.web.api.message.MessengerMessage;
 import org.lecturestudio.web.api.message.SpeechBaseMessage;
@@ -77,11 +81,13 @@ import org.lecturestudio.web.api.message.SpeechCancelMessage;
 import org.lecturestudio.web.api.message.SpeechRequestMessage;
 import org.lecturestudio.web.api.model.Message;
 import org.lecturestudio.web.api.model.ScreenSource;
+import org.lecturestudio.web.api.service.ServiceParameters;
 import org.lecturestudio.web.api.stream.ScreenPresentationViewContext;
 import org.lecturestudio.core.view.SlidePresentationViewContext;
 import org.lecturestudio.web.api.stream.model.CourseParticipant;
 import org.lecturestudio.web.api.stream.model.CoursePresence;
 import org.lecturestudio.web.api.stream.model.CoursePresenceType;
+import org.lecturestudio.web.api.stream.service.StreamProviderService;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -91,6 +97,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
@@ -108,21 +117,9 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 	private final WebService webService;
 
+	private final WebServiceInfo webServiceInfo;
+
 	private final WebRtcStreamService streamService;
-
-	private StylusHandler stylusHandler;
-
-	private PageEditedListener pageEditedListener;
-
-	private SlideViewAddressOverlay addressOverlay;
-
-	private ExecutableState streamingState;
-
-	private ExecutableState messengerState;
-
-	private ExecutableState quizState;
-
-	private ToolType toolType;
 
 	private final ScreenPresentationViewContext screenViewContext;
 
@@ -138,6 +135,24 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 	private final RecordingService recordingService;
 
+	private StylusHandler stylusHandler;
+
+	private PageEditedListener pageEditedListener;
+
+	private SlideViewAddressOverlay addressOverlay;
+
+	private ExecutableState streamingState;
+
+	private ExecutableState messengerState;
+
+	private ExecutableState quizState;
+
+	private ToolType toolType;
+
+	private TextBoxView lastFocusedTextBox;
+
+	private SelectionIdleTimer idleTimer;
+
 
 	@Inject
 	SlidesPresenter(ApplicationContext context, SlidesView view,
@@ -149,6 +164,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 					DocumentRecorder documentRecorder,
 					RecordingService recordingService,
 					WebService webService,
+					WebServiceInfo webServiceInfo,
 					WebRtcStreamService streamService) {
 		super(context, view);
 
@@ -160,6 +176,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		this.documentService = documentService;
 		this.recordingService = recordingService;
 		this.webService = webService;
+		this.webServiceInfo = webServiceInfo;
 		this.streamService = streamService;
 		this.eventBus = context.getEventBus();
 		this.shortcutMap = new HashMap<>();
@@ -236,17 +253,11 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 		checkRemoteServiceState();
 
-		if (event.stopped()) {
+		if (event.started()) {
+			loadParticipants();
+		}
+		else if (event.stopped()) {
 			onEvent(new ScreenShareStateEvent(null, event.getState()));
-
-			// Close all documents related to a screen source.
-			for (Document doc : documentService.getDocuments().asList()) {
-				if (doc.isScreen()) {
-					documentService.removeDocument(doc);
-				}
-			}
-
-			documentService.selectLastDocument();
 		}
 	}
 
@@ -358,12 +369,12 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	}
 
 	@Subscribe
-	public void onEvent(PeerVideoFrameEvent event) {
+	public void onEvent(RemoteVideoFrameEvent event) {
 		view.setVideoFrameEvent(event);
 	}
 
 	@Subscribe
-	public void onEvent(ScreenVideoFrameEvent event) {
+	public void onEvent(LocalScreenVideoFrameEvent event) {
 		screenViewContext.addScreenVideoFrameEvent(event);
 	}
 
@@ -445,6 +456,31 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		getPresenterConfig().getSlideViewConfiguration().setParticipantsPosition(position);
 	}
 
+	@Subscribe
+	public void onEvent(PreviewPositionEvent event) {
+		final MessageBarPosition position = event.getPosition();
+
+		view.setPreviewPosition(position);
+	}
+
+	@Subscribe
+	public void onEvent(TextColorEvent event) {
+		if (nonNull(lastFocusedTextBox)) {
+			lastFocusedTextBox.setTextColor(event.getColor());
+		}
+	}
+
+	@Subscribe
+	public void onEvent(TextFontEvent event) {
+		if (nonNull(lastFocusedTextBox)) {
+			// Scale font size to page metrics.
+			Font textFont = event.getFont().clone();
+			textFont.setSize(textFont.getSize() / toolController.getViewTransform().getScaleX());
+
+			lastFocusedTextBox.setTextFont(textFont);
+		}
+	}
+
 	private void externalMessagesPositionChanged(ExternalWindowPosition position) {
 		final ExternalWindowConfiguration config = getExternalMessagesConfig();
 
@@ -524,7 +560,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		PresenterContext presenterContext = (PresenterContext) context;
 		presenterContext.getSpeechRequests().remove(message);
 
-		Long requestId = message.getRequestId();
+		UUID requestId = message.getRequestId();
 		String userName = String.format("%s %s", message.getFirstName(),
 				message.getFamilyName());
 
@@ -567,7 +603,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 			Document prevMessageDocument = null;
 
 			for (Document doc : documentService.getDocuments().asList()) {
-				if (doc.isMessage()) {
+				if (doc.isMessage() && doc instanceof MessageDocument) {
 					prevMessageDocument = doc;
 					break;
 				}
@@ -624,8 +660,14 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	}
 
 	private void pageObjectViewFocused(PageObjectView<? extends Shape> objectView) {
+		Class<? extends Shape> shapeClass = pageObjectRegistry.getShapeClass(ToolType.TEXT);
+
+		if (nonNull(shapeClass) && shapeClass.isAssignableFrom(objectView.getPageShape().getClass())) {
+			lastFocusedTextBox = (TextBoxView) objectView;
+		}
+
 		// Set latex text.
-		Class<? extends Shape> shapeClass = pageObjectRegistry.getShapeClass(ToolType.LATEX);
+		shapeClass = pageObjectRegistry.getShapeClass(ToolType.LATEX);
 
 		if (isNull(shapeClass) || !shapeClass.isAssignableFrom(objectView.getPageShape().getClass())) {
 			return;
@@ -720,7 +762,19 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	}
 
 	private void selectPage(Page page) {
-		documentService.selectPage(page);
+		//	documentService.selectPage(page);
+
+		// Ignore all previous tasks.
+		if (nonNull(idleTimer)) {
+			idleTimer.stop();
+		}
+
+		// Select page with a delay to prevent unwanted page changes.
+		Integer delay = getPresenterConfig().getPageSelectionDelay();
+		delay = nonNull(delay) ? Math.abs(delay) : 0;
+
+		idleTimer = new SelectionIdleTimer(page, delay);
+		idleTimer.runIdleTask();
 	}
 
 	private void nextPage() {
@@ -898,7 +952,20 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 	@Override
 	public void initialize() {
-		stylusHandler = new StylusHandler(toolController);
+		stylusHandler = new StylusHandler(toolController, () -> {
+			// Cancel page selection task.
+			if (nonNull(idleTimer)) {
+				idleTimer.stop();
+				idleTimer = null;
+
+				// Tell the view to keep the currently selected page.
+				Page page = documentService.getDocuments().getSelectedDocument().getCurrentPage();
+				PresentationParameterProvider ppProvider = context.getPagePropertyProvider(ViewType.User);
+				PresentationParameter parameter = ppProvider.getParameter(page);
+
+				view.setPage(page, parameter);
+			}
+		});
 
 		pageObjectRegistry.register(ToolType.TEXT, TextBoxView.class);
 		pageObjectRegistry.register(ToolType.LATEX, TeXBoxView.class);
@@ -946,7 +1013,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 			// Update grid parameter.
 			PresentationParameterProvider pProvider = context.getPagePropertyProvider(ViewType.Presentation);
 
-			if (!newValue) {
+			if (Boolean.FALSE.equals(newValue)) {
 				// Hide grid if previously enabled.
 				pProvider.getAllPresentationParameters().forEach(param -> param.setShowGrid(newValue));
 			}
@@ -1037,6 +1104,9 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 		view.setParticipantsPosition(getPresenterConfig()
 				.getSlideViewConfiguration().getParticipantsPosition());
+
+		view.setPreviewPosition(getPresenterConfig()
+				.getSlideViewConfiguration().getPreviewPosition());
 
 		try {
 			recordingService.init();
@@ -1187,6 +1257,11 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	}
 
 	private void recordPage(Page page) {
+		if (page.getDocument().isQuiz() && quizState == ExecutableState.Started) {
+			// Do not record pages from running quizzes.
+			return;
+		}
+
 		try {
 			documentRecorder.recordPage(page);
 		}
@@ -1225,6 +1300,21 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		return overlay;
 	}
 
+	private void loadParticipants() {
+		PresenterContext ctx = (PresenterContext) context;
+		PresenterConfiguration config = ctx.getConfiguration();
+
+		long courseId = ctx.getCourse().getId();
+
+		ServiceParameters parameters = new ServiceParameters();
+		parameters.setUrl(webServiceInfo.getStreamPublisherApiUrl());
+
+		StreamProviderService spService = new StreamProviderService(parameters,
+				config.getStreamConfig()::getAccessToken);
+
+		view.addParticipants(spService.getParticipants(courseId));
+	}
+
 
 	private class DocumentChangeHandler implements DocumentChangeListener {
 
@@ -1243,6 +1333,42 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		@Override
 		public void pageRemoved(Page page) {
 
+		}
+	}
+
+
+
+	private class SelectionIdleTimer extends Timer {
+
+		private final Page page;
+
+		private final int idleTime;
+
+		private TimerTask idleTask;
+
+
+		SelectionIdleTimer(Page page, int idleTime) {
+			this.page = page;
+			this.idleTime = idleTime;
+		}
+
+		void runIdleTask() {
+			idleTask = new TimerTask() {
+
+				@Override
+				public void run() {
+					documentService.selectPage(page);
+				}
+			};
+
+			schedule(idleTask, idleTime);
+		}
+
+		public void stop() {
+			cancel();
+			purge();
+
+			idleTask = null;
 		}
 	}
 }
