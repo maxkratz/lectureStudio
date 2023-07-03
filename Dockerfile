@@ -17,7 +17,7 @@ RUN apt-get install -yq \
     curl
 
 # Install maven (newer version compared to apt)
-ARG MAVEN_VERSION=3.8.6
+ARG MAVEN_VERSION=3.9.3
 ARG BASE_URL=https://apache.osuosl.org/maven/maven-3/${MAVEN_VERSION}/binaries
 RUN mkdir -p /usr/share/maven /usr/share/maven/ref
 RUN curl -fsSL -o /tmp/apache-maven.tar.gz ${BASE_URL}/apache-maven-${MAVEN_VERSION}-bin.tar.gz
