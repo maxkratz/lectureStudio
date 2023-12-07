@@ -26,6 +26,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.URL;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -118,6 +119,19 @@ public class FileUtils {
 		return path.substring(index + 1);
 	}
 
+	/**
+	 * Returns the decoded path string with %20 in original path string replaced
+	 * by white space character.
+	 */
+	public static String decodePath(String path) {
+		try {
+			return new URI(null, path, null).getPath();
+		}
+		catch (Exception e) {
+			return path;
+		}
+	}
+
 	public static Locale extractLocale(String path, String baseName) {
 		String tag = stripExtension(path);
 		tag = tag.substring(tag.lastIndexOf(baseName) + baseName.length());
@@ -156,8 +170,9 @@ public class FileUtils {
 		for (final Enumeration<JarEntry> e = jarFile.entries(); e.hasMoreElements();) {
 			JarEntry entry = e.nextElement();
 			String entryName = entry.getName();
+			File file = new File(entryName);
 
-			if (!entryName.startsWith(source)) {
+			if (!file.toPath().normalize().startsWith(source)) {
 				continue;
 			}
 
@@ -266,8 +281,9 @@ public class FileUtils {
 
 			while (entries.hasMoreElements()) {
 				String name = entries.nextElement().getName();
-				
-				if (name.startsWith(searchPath) && predicate.test(name)) {
+				File file = new File(name);
+
+				if (file.toPath().normalize().startsWith(searchPath) && predicate.test(name)) {
 					String relativePath = name.substring(searchPath.length() + 1);
 					
 					if (!relativePath.isEmpty()) {

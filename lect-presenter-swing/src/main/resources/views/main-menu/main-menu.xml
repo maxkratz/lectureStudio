@@ -23,12 +23,19 @@
 			<checkboxmenuitem id="externalParticipantsMenuItem" text="menu.external.participants" />
 			<checkboxmenuitem id="externalSlidePreviewMenuItem" text="menu.external.slide.preview" />
 			<checkboxmenuitem id="externalSpeechMenuItem" text="menu.external.speech" />
+			<checkboxmenuitem id="externalNotesMenuItem" text="menu.external.notes" />
 		</menu>
 		<menu id="messagesPositionMenu" text="menu.messages.position">
 			<buttongroup>
 				<radiobuttonmenuitem id="messagesPositionLeftMenuItem" text="menu.left" />
 				<radiobuttonmenuitem id="messagesPositionBottomMenuItem" text="menu.bottom" />
 				<radiobuttonmenuitem id="messagesPositionRightMenuItem" text="menu.right" />
+			</buttongroup>
+		</menu>
+		<menu id="notesPositionMenu" text="menu.notes.position">
+			<buttongroup>
+				<radiobuttonmenuitem id="notesPositionLeftMenuItem" text="menu.left" />
+				<radiobuttonmenuitem id="notesPositionBottomMenuItem" text="menu.bottom" />
 			</buttongroup>
 		</menu>
 		<menu id="participantsPositionMenu" text="menu.participants.position">
@@ -57,6 +64,7 @@
 		<menuitem id="stopRecordingMenuItem" text="menu.recording.stop" enabled="false" />
 		<separator />
 		<checkboxmenuitem id="enableStreamMenuItem" text="menu.stream.start" enabled="false" />
+		<checkboxmenuitem id="viewStreamMenuItem" text="menu.stream.view" type="checkbox" selected="false" enabled="false" />
 		<checkboxmenuitem id="enableStreamMicrophoneMenuItem" text="menu.stream.microphone.start" type="checkbox" selected="true" enabled="false" />
 		<checkboxmenuitem id="enableStreamCameraMenuItem" text="menu.stream.camera.start" type="checkbox" selected="true" enabled="false" />
 		<separator />
@@ -66,6 +74,10 @@
 		<menuitem id="selectQuizMenuItem" text="menu.quiz.selection" accelerator="Z" enabled="false" />
 		<menuitem id="newQuizMenuItem" text="menu.quiz.new" enabled="false" />
 		<menuitem id="closeQuizMenuItem" text="menu.quiz.stop" enabled="false" />
+		<separator />
+		<menuitem id="pauseStopwatchMenuItem" text="menu.stopwatch.pause" accelerator="shift P" enabled="true" />
+		<menuitem id="resetStopwatchMenuItem" text="menu.stopwatch.stop" enabled="true" />
+		<menuitem id="configStopwatchMenuItem" text="menu.stopwatch.config" enabled="true" />
 	</menu>
 	<menu id="bookmarksMenu" text="menu.bookmarks">
 		<menuitem id="clearBookmarksMenuItem" text="menu.bookmarks.clear" enabled="false" />
@@ -79,6 +91,8 @@
 		<menuitem id="aboutMenuItem" text="menu.about" />
 	</menu>
 	<box.hglue />
+	<button id="stopwatchMenu" icon="stopwatch.svg, 20" disabledicon="stopwatch.svg, 20" enabled="true" />
+	<box.hstrut width="10" />
 	<menu id="timeMenu" icon="clock-indicator.svg, 20" disabledicon="clock-indicator.svg, 20" enabled="false" />
 	<box.hstrut width="10" />
 	<menu id="recordIndicatorMenu" icon="record-indicator.svg, 20" disabledicon="record-indicator.svg, 20" enabled="false" />

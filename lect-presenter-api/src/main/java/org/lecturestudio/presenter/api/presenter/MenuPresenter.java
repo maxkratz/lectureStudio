@@ -21,9 +21,10 @@ package org.lecturestudio.presenter.api.presenter;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
-import com.google.common.eventbus.Subscribe;
+import javax.inject.Inject;
 
-import java.awt.*;
+import java.awt.Color;
+import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -33,8 +34,11 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-import javax.inject.Inject;
+import com.google.common.eventbus.Subscribe;
 
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
@@ -63,13 +67,38 @@ import org.lecturestudio.core.service.DocumentService;
 import org.lecturestudio.core.util.FileUtils;
 import org.lecturestudio.core.util.ListChangeListener;
 import org.lecturestudio.core.util.ObservableList;
-import org.lecturestudio.core.view.*;
+import org.lecturestudio.core.view.FileChooserView;
+import org.lecturestudio.core.view.PresentationParameter;
+import org.lecturestudio.core.view.PresentationParameterProvider;
+import org.lecturestudio.core.view.View;
+import org.lecturestudio.core.view.ViewContextFactory;
+import org.lecturestudio.core.view.ViewType;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.config.SlideViewConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
-import org.lecturestudio.presenter.api.event.*;
-import org.lecturestudio.presenter.api.model.*;
-import org.lecturestudio.presenter.api.pdf.embedded.QuizParser;
+import org.lecturestudio.presenter.api.event.ExternalMessagesViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalNotesViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalParticipantsViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalSlidePreviewViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalSpeechViewEvent;
+import org.lecturestudio.presenter.api.event.MessageBarPositionEvent;
+import org.lecturestudio.presenter.api.event.MessengerStateEvent;
+import org.lecturestudio.presenter.api.event.NotesBarPositionEvent;
+import org.lecturestudio.presenter.api.event.ParticipantsPositionEvent;
+import org.lecturestudio.presenter.api.event.PreviewPositionEvent;
+import org.lecturestudio.presenter.api.event.QuizStateEvent;
+import org.lecturestudio.presenter.api.event.RecordingStateEvent;
+import org.lecturestudio.presenter.api.event.RecordingTimeEvent;
+import org.lecturestudio.presenter.api.event.StreamReconnectStateEvent;
+import org.lecturestudio.presenter.api.event.StreamingStateEvent;
+import org.lecturestudio.presenter.api.model.Bookmark;
+import org.lecturestudio.presenter.api.model.BookmarkKeyException;
+import org.lecturestudio.presenter.api.model.Bookmarks;
+import org.lecturestudio.presenter.api.model.BookmarksListener;
+import org.lecturestudio.presenter.api.model.MessageBarPosition;
+import org.lecturestudio.presenter.api.model.NoteBarPosition;
+import org.lecturestudio.presenter.api.model.Stopwatch;
+import org.lecturestudio.presenter.api.presenter.command.StopwatchCommand;
 import org.lecturestudio.presenter.api.service.BookmarkService;
 import org.lecturestudio.presenter.api.service.QuizWebServiceState;
 import org.lecturestudio.presenter.api.service.RecordingService;
@@ -79,13 +108,16 @@ import org.lecturestudio.presenter.api.view.MessengerWindow;
 
 public class MenuPresenter extends Presenter<MenuView> {
 
+	/** Mainly used for Desktop.getDesktop().open to circumvent errors. */
+	private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+
 	private final DateTimeFormatter timeFormatter;
 
 	private final Timer timer;
 
 	private final EventBus eventBus;
 
-	private final QuizParser quizParser;
+	private final Stopwatch stopwatch;
 
 	@Inject
 	private ToolController toolController;
@@ -111,9 +143,9 @@ public class MenuPresenter extends Presenter<MenuView> {
 		super(context, view);
 
 		this.eventBus = context.getEventBus();
-		this.quizParser = new QuizParser();
 		this.timeFormatter = DateTimeFormatter.ofPattern("HH:mm", getPresenterConfig().getLocale());
 		this.timer = new Timer("MenuTime", true);
+		this.stopwatch = ((PresenterContext) this.context).getStopwatch();
 	}
 
 	@Subscribe
@@ -136,7 +168,8 @@ public class MenuPresenter extends Presenter<MenuView> {
 
 		if (event.isRemoved()) {
 			page.removePageEditedListener(this::pageEdited);
-		} else if (event.isSelected()) {
+		}
+		else if (event.isSelected()) {
 			Page oldPage = event.getOldPage();
 
 			if (nonNull(oldPage)) {
@@ -145,6 +178,7 @@ public class MenuPresenter extends Presenter<MenuView> {
 
 			page.addPageEditedListener(this::pageEdited);
 
+			stopwatch.setRunStopwatch(true);
 			pageChanged(page);
 		}
 	}
@@ -214,12 +248,19 @@ public class MenuPresenter extends Presenter<MenuView> {
 		view.setExternalSpeech(event.isEnabled(), event.isShow());
 	}
 
+	@Subscribe
+	public void onEvent(final ExternalNotesViewEvent event) {
+		view.setExternalNotes(event.isEnabled(), event.isShow());
+	}
+
 	public void openBookmark(Bookmark bookmark) {
 		try {
 			bookmarkService.gotoBookmark(bookmark);
-		} catch (BookmarkKeyException e) {
-			showError("bookmark.goto.error", "bookmark.key.not.existing", bookmark.getShortcut());
-		} catch (Exception e) {
+		}
+		catch (BookmarkKeyException e) {
+			context.showError("bookmark.goto.error", "bookmark.key.not.existing", bookmark.getShortcut());
+		}
+		catch (Exception e) {
 			handleException(e, "Go to bookmark failed", "bookmark.goto.error");
 		}
 	}
@@ -276,8 +317,16 @@ public class MenuPresenter extends Presenter<MenuView> {
 		eventBus.post(new ExternalSpeechViewEvent(selected));
 	}
 
+	public void externalNotes(boolean selected) {
+		eventBus.post(new ExternalNotesViewEvent(selected));
+	}
+
 	public void positionMessages(MessageBarPosition position) {
 		eventBus.post(new MessageBarPositionEvent(position));
+	}
+
+	public void positionNotes(NoteBarPosition position) {
+		eventBus.post(new NotesBarPositionEvent(position));
 	}
 
 	public void positionParticipants(MessageBarPosition position) {
@@ -308,17 +357,18 @@ public class MenuPresenter extends Presenter<MenuView> {
 		try {
 			if (recordingService.started()) {
 				recordingService.suspend();
-			} else {
+			}
+			else {
 				recordingService.start();
 			}
-		} catch (ExecutableException e) {
+		}
+		catch (ExecutableException e) {
 			Throwable cause = nonNull(e.getCause()) ? e.getCause().getCause() : null;
 
-			if (cause instanceof AudioDeviceNotConnectedException) {
-				var ex = (AudioDeviceNotConnectedException) cause;
-				showError("recording.start.error", "recording.start.device.error", ex.getDeviceName());
-				logException(e, "Start recording failed");
-			} else {
+			if (cause instanceof AudioDeviceNotConnectedException ex) {
+				context.showError("recording.start.error", "recording.start.device.error", ex.getDeviceName());
+			}
+			else {
 				handleException(e, "Start recording failed", "recording.start.error");
 			}
 		}
@@ -329,12 +379,14 @@ public class MenuPresenter extends Presenter<MenuView> {
 
 		if (config.getConfirmStopRecording()) {
 			eventBus.post(new ShowPresenterCommand<>(ConfirmStopRecordingPresenter.class));
-		} else {
+		}
+		else {
 			try {
 				recordingService.stop();
 
 				eventBus.post(new ShowPresenterCommand<>(SaveRecordingPresenter.class));
-			} catch (ExecutableException e) {
+			}
+			catch (ExecutableException e) {
 				handleException(e, "Stop recording failed", "recording.stop.error");
 			}
 		}
@@ -343,7 +395,8 @@ public class MenuPresenter extends Presenter<MenuView> {
 	public void showMessengerWindow(boolean show) {
 		if (show) {
 			eventBus.post(new ShowPresenterCommand<>(MessengerWindowPresenter.class));
-		} else {
+		}
+		else {
 			eventBus.post(new ClosePresenterCommand(MessengerWindowPresenter.class));
 		}
 	}
@@ -360,6 +413,15 @@ public class MenuPresenter extends Presenter<MenuView> {
 		streamService.stopQuiz();
 	}
 
+
+	public void pauseStopwatch(){
+		stopwatch.startStopStopwatch();
+	}
+
+	public void resetStopwatch(){
+		stopwatch.resetStopwatch();
+		view.setCurrentStopwatch(stopwatch.calculateCurrentStopwatch());
+	}
 	public void clearBookmarks() {
 		bookmarkService.clearBookmarks();
 	}
@@ -377,12 +439,16 @@ public class MenuPresenter extends Presenter<MenuView> {
 	}
 
 	public void showLog() {
-		try {
-			Desktop.getDesktop().open(new File(
-					context.getDataLocator().getAppDataPath()));
-		} catch (IOException e) {
-			handleException(e, "Open log path failed", "generic.error");
-		}
+		// Run async to avoid 'CoInitializeEx() failed.' with Desktop.getDesktop().open
+		CompletableFuture.runAsync(() -> {
+			try {
+				Desktop.getDesktop().open(new File(context.getDataLocator()
+						.getAppDataPath()));
+			}
+			catch (IOException e) {
+				handleException(e, "Open log path failed", "generic.error");
+			}
+		}, executorService);
 	}
 
 	public void showAboutView() {
@@ -455,7 +521,7 @@ public class MenuPresenter extends Presenter<MenuView> {
 		view.setStreamingState(ExecutableState.Stopped);
 		view.setQuizState(ExecutableState.Stopped);
 
-		view.bindAttendeesCount(presenterContext.attendeesCountProperty());
+		view.bindCourseParticipantsCount(presenterContext.courseParticipantsCountProperty());
 		view.bindMessageCount(presenterContext.messageCountProperty());
 		view.bindSpeechRequestCount(presenterContext.speechRequestCountProperty());
 
@@ -481,6 +547,7 @@ public class MenuPresenter extends Presenter<MenuView> {
 		view.setOnExternalParticipants(this::externalParticipants);
 		view.setOnExternalSlidePreview(this::externalSlidePreview);
 		view.setOnExternalSpeech(this::externalSpeech);
+		view.setOnExternalNotes(this::externalNotes);
 
 		switch (slideViewConfig.getMessageBarPosition()) {
 			case LEFT -> view.setMessagesPositionLeft();
@@ -491,6 +558,14 @@ public class MenuPresenter extends Presenter<MenuView> {
 		view.setOnMessagesPositionLeft(() -> positionMessages(MessageBarPosition.LEFT));
 		view.setOnMessagesPositionBottom(() -> positionMessages(MessageBarPosition.BOTTOM));
 		view.setOnMessagesPositionRight(() -> positionMessages(MessageBarPosition.RIGHT));
+
+		switch (slideViewConfig.getNotesBarPosition()) {
+			case LEFT -> view.setNotesPositionLeft();
+			case BOTTOM -> view.setNotesPositionBottom();
+		}
+
+		view.setOnNotesPositionLeft(() -> positionNotes(NoteBarPosition.LEFT));
+		view.setOnNotesPositionBottom(() -> positionNotes(NoteBarPosition.BOTTOM));
 
 		switch (slideViewConfig.getParticipantsPosition()) {
 			case LEFT -> view.setParticipantsPositionLeft();
@@ -515,6 +590,7 @@ public class MenuPresenter extends Presenter<MenuView> {
 		view.setOnStartRecording(this::startRecording);
 		view.setOnStopRecording(this::stopRecording);
 		view.bindEnableStream(presenterContext.streamStartedProperty());
+		view.bindViewStream(presenterContext.viewStreamProperty());
 		view.bindEnableStreamingMicrophone(config.getStreamConfig().enableMicrophoneProperty());
 		view.bindEnableStreamingCamera(config.getStreamConfig().enableCameraProperty());
 		view.bindEnableMessenger(presenterContext.messengerStartedProperty());
@@ -522,6 +598,10 @@ public class MenuPresenter extends Presenter<MenuView> {
 		view.setOnShowSelectQuizView(this::selectQuiz);
 		view.setOnShowNewQuizView(this::newQuiz);
 		view.setOnCloseQuiz(this::closeQuiz);
+		view.setOnPauseStopwatch(this::pauseStopwatch);
+		view.setOnResetStopwatch(this::resetStopwatch);
+		view.setCurrentStopwatch(this::pauseStopwatch);
+		view.setOnConfigStopwatch(this::startStopwatchConfiguration);
 
 		view.setOnClearBookmarks(this::clearBookmarks);
 		view.setOnShowNewBookmarkView(this::newBookmark);
@@ -599,5 +679,29 @@ public class MenuPresenter extends Presenter<MenuView> {
 				view.setCurrentTime(LocalDateTime.now().format(timeFormatter));
 			}
 		}, 0, 30000);
+
+		timer.scheduleAtFixedRate(new TimerTask() {
+
+			@Override
+			public void run() {
+				stopwatch.updateStopwatchInterval();
+				view.setCurrentStopwatch(stopwatch.calculateCurrentStopwatch());
+				//Timer blinks 5times when the time ran out
+				if(stopwatch.isTimerEnded()) {
+					if (stopwatch.getTimerEndedInterval() % 2 == 0) {
+						view.setCurrentStopwatchBackgroundColor(Color.WHITE);
+					} else {
+						view.setCurrentStopwatchBackgroundColor(Color.RED);
+					}
+				}
+			}
+		}, 0, 1000);
+	}
+
+	public void startStopwatchConfiguration() {
+		eventBus.post(new StopwatchCommand(() -> {
+			stopwatch.stopStopwatch();
+			view.setCurrentStopwatch(stopwatch.calculateCurrentStopwatch());
+		}));
 	}
 }

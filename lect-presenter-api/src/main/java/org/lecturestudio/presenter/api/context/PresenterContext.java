@@ -18,9 +18,13 @@
 
 package org.lecturestudio.presenter.api.context;
 
+import static java.util.Objects.isNull;
+
 import java.io.File;
 import java.util.List;
+import java.util.Set;
 
+import org.cef.CefApp;
 import org.lecturestudio.core.app.AppDataLocator;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.configuration.Configuration;
@@ -31,15 +35,21 @@ import org.lecturestudio.core.beans.ObjectProperty;
 import org.lecturestudio.core.bus.EventBus;
 import org.lecturestudio.core.util.ListChangeListener;
 import org.lecturestudio.core.util.ObservableArrayList;
+import org.lecturestudio.core.util.ObservableHashSet;
 import org.lecturestudio.core.util.ObservableList;
+import org.lecturestudio.core.util.ObservableSet;
 import org.lecturestudio.presenter.api.config.PresenterConfigService;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
+import org.lecturestudio.presenter.api.model.Stopwatch;
 import org.lecturestudio.presenter.api.service.UserPrivilegeService;
 import org.lecturestudio.web.api.message.MessengerMessage;
 import org.lecturestudio.web.api.message.SpeechRequestMessage;
 import org.lecturestudio.web.api.stream.model.Course;
+import org.lecturestudio.web.api.stream.model.CourseParticipant;
 
 public class PresenterContext extends ApplicationContext {
+
+	public record ParticipantCount(int classroomCount, int streamCount) {}
 
 	public static final String SLIDES_CONTEXT = "Slides";
 	public static final String SLIDES_TO_PDF_CONTEXT = "SlidesToPDF";
@@ -50,6 +60,12 @@ public class PresenterContext extends ApplicationContext {
 
 	private final ObjectProperty<Course> course = new ObjectProperty<>();
 
+	private final ObjectProperty<CefApp> cefApp = new ObjectProperty<>();
+
+	private final ObservableSet<CourseParticipant> courseParticipants = new ObservableHashSet<>();
+
+	private final ObjectProperty<ParticipantCount> courseParticipantsCount = new ObjectProperty<>();
+
 	private final ObservableList<MessengerMessage> messengerMessages = new ObservableArrayList<>();
 
 	private final IntegerProperty messageCount = new IntegerProperty();
@@ -58,11 +74,11 @@ public class PresenterContext extends ApplicationContext {
 
 	private final IntegerProperty speechRequestCount = new IntegerProperty();
 
-	private final IntegerProperty attendeesCount = new IntegerProperty();
-
 	private final BooleanProperty messengerStarted = new BooleanProperty();
 
 	private final BooleanProperty streamStarted = new BooleanProperty();
+
+	private final BooleanProperty viewStream = new BooleanProperty();
 
 	private final BooleanProperty recordingStarted = new BooleanProperty();
 
@@ -78,6 +94,7 @@ public class PresenterContext extends ApplicationContext {
 
 	private final String recordingDir;
 
+	private final Stopwatch stopwatch = new Stopwatch();
 
 	public PresenterContext(AppDataLocator dataLocator, File configFile,
 			Configuration config, Dictionary dict, EventBus eventBus,
@@ -103,8 +120,27 @@ public class PresenterContext extends ApplicationContext {
 				speechRequestCount.set(list.size());
 			}
 		});
+
+		courseParticipants.addListener(set -> {
+			int streamCount = 0;
+			int classroomCount = 0;
+
+			for (CourseParticipant participant : set) {
+				if (isNull(participant.getPresenceType())) {
+					continue;
+				}
+
+				switch (participant.getPresenceType()) {
+					case STREAM -> streamCount++;
+					case CLASSROOM -> classroomCount++;
+				}
+			}
+
+			courseParticipantsCount.set(new ParticipantCount(classroomCount, streamCount));
+		});
 	}
 
+	@Override
 	public PresenterConfiguration getConfiguration() {
 		return (PresenterConfiguration) super.getConfiguration();
 	}
@@ -131,6 +167,22 @@ public class PresenterContext extends ApplicationContext {
 		return course;
 	}
 
+	public CefApp getCefApp() {
+		return cefApp.get();
+	}
+
+	public void setCefApp(CefApp cefApp) {
+		this.cefApp.set(cefApp);
+	}
+
+	public Set<CourseParticipant> getCourseParticipants() {
+		return courseParticipants;
+	}
+
+	public ObjectProperty<ParticipantCount> courseParticipantsCountProperty() {
+		return courseParticipantsCount;
+	}
+
 	public List<MessengerMessage> getMessengerMessages() {
 		return messengerMessages;
 	}
@@ -145,18 +197,6 @@ public class PresenterContext extends ApplicationContext {
 
 	public IntegerProperty speechRequestCountProperty() {
 		return speechRequestCount;
-	}
-
-	public IntegerProperty attendeesCountProperty() {
-		return attendeesCount;
-	}
-
-	public int getAttendeesCount() {
-		return attendeesCount.get();
-	}
-
-	public void setAttendeesCount(int count) {
-		attendeesCount.set(count);
 	}
 
 	public void setHasRecordedChanges(boolean changes) {
@@ -181,6 +221,18 @@ public class PresenterContext extends ApplicationContext {
 
 	public BooleanProperty streamStartedProperty() {
 		return streamStarted;
+	}
+
+	public void setViewStream(boolean view) {
+		viewStream.set(view);
+	}
+
+	public boolean getViewStream() {
+		return viewStream.get();
+	}
+
+	public BooleanProperty viewStreamProperty() {
+		return viewStream;
 	}
 
 	public void setMessengerStarted(boolean started) {
@@ -229,5 +281,9 @@ public class PresenterContext extends ApplicationContext {
 
 	public String getRecordingDirectory() {
 		return recordingDir;
+	}
+
+	public Stopwatch getStopwatch(){
+		return stopwatch;
 	}
 }

@@ -127,6 +127,10 @@ public class FileEventExecutor extends EventExecutor {
 			thread.start();
 		}
 		else if (state == ExecutableState.Suspended) {
+			// Interrupt the Thread in case it was sleeping in order to play new annotations again
+			if (thread.getState() == Thread.State.TIMED_WAITING) {
+				thread.interrupt();
+			}
 			thread.signal();
 		}
 	}
@@ -193,7 +197,12 @@ public class FileEventExecutor extends EventExecutor {
 				}
 
 				// Relieve the CPU.
-				thread.sleep(sleep);
+				try {
+					thread.sleep(sleep);
+				}
+				catch (InterruptedException e) {
+					// Ignore
+				}
 			}
 			else if (state == ExecutableState.Suspended) {
 				thread.await();

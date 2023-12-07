@@ -18,6 +18,7 @@
 
 package org.lecturestudio.presenter.api.view;
 
+import java.awt.*;
 import java.io.File;
 import java.util.List;
 
@@ -33,6 +34,7 @@ import org.lecturestudio.core.view.Action;
 import org.lecturestudio.core.view.ConsumerAction;
 import org.lecturestudio.core.view.PresentationParameter;
 import org.lecturestudio.core.view.View;
+import org.lecturestudio.presenter.api.context.PresenterContext.ParticipantCount;
 import org.lecturestudio.presenter.api.model.Bookmark;
 import org.lecturestudio.presenter.api.model.Bookmarks;
 import org.lecturestudio.presenter.api.model.MessageBarPosition;
@@ -100,6 +102,10 @@ public interface MenuView extends View {
 
 	void setOnExternalSpeech(ConsumerAction<Boolean> action);
 
+	void setExternalNotes(boolean selected, boolean show);
+
+	void setOnExternalNotes(ConsumerAction<Boolean> action);
+
 	void setOnMessagesPositionLeft(Action action);
 
 	void setMessagesPositionLeft();
@@ -111,6 +117,15 @@ public interface MenuView extends View {
 	void setOnMessagesPositionRight(Action action);
 
 	void setMessagesPositionRight();
+
+	void setOnNotesPositionLeft(Action action);
+
+	void setNotesPositionLeft();
+
+	void setOnNotesPositionBottom(Action action);
+
+	void setNotesPositionBottom();
+
 
 	void setOnParticipantsPositionLeft(Action action);
 
@@ -144,6 +159,8 @@ public interface MenuView extends View {
 
 	void bindEnableStream(BooleanProperty enable);
 
+	void bindViewStream(BooleanProperty enable);
+
 	void bindEnableStreamingMicrophone(BooleanProperty enable);
 
 	void bindEnableStreamingCamera(BooleanProperty enable);
@@ -169,6 +186,18 @@ public interface MenuView extends View {
 	void setStreamingState(ExecutableState state);
 
 	void setStreamReconnectState(ExecutableState state);
+
+	/**
+	 * Stopwatch Menu
+	 */
+
+	void setOnResetStopwatch(Action action);
+
+	void setOnPauseStopwatch(Action action);
+
+	void setOnConfigStopwatch(Action action);
+
+	void setCurrentStopwatchBackgroundColor(Color color);
 
 	/**
 	 * Bookmarks Menu
@@ -200,6 +229,10 @@ public interface MenuView extends View {
 
 	void setCurrentTime(String time);
 
+	void setCurrentStopwatch(String time);
+
+	void setCurrentStopwatch(Action action);
+
 	/**
 	 * Recording time Menu
 	 */
@@ -214,7 +247,7 @@ public interface MenuView extends View {
 
 	void bindSpeechRequestCount(IntegerProperty count);
 
-	void bindAttendeesCount(IntegerProperty count);
+	void bindCourseParticipantsCount(ObjectProperty<ParticipantCount> count);
 
 	void setQuizServiceState(QuizWebServiceState state);
 }

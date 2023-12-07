@@ -38,7 +38,7 @@ for /l %%n in (0,1,1) do (
 	echo Get !app[%%n]! modules
 	for /F %%i in ('jdeps ^
 					--class-path "${package.input.dir}\lib\*" ^
-					--multi-release 15 ^
+					--multi-release 17 ^
 					--ignore-missing-deps ^
 					--print-module-deps ^
 					-R -q ^
@@ -78,6 +78,7 @@ for /l %%n in (0,1,1) do (
 		--dest "%PRODUCT_NAME%" ^
 		--java-options -Xmx4096m ^
 		--java-options -Djava.library.path=%LIBRARY_PATH% ^
+		--java-options -Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager ^
 		--app-version %VERSION% ^
 		--name !app[%%n]! ^
 		--main-jar !jar[%%n]! ^

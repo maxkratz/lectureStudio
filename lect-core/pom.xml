@@ -16,7 +16,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<jackson.version>2.13.4</jackson.version>
+		<jackson.version>2.15.2</jackson.version>
 	</properties>
 
 	<build>
@@ -158,6 +158,12 @@
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcpkix-jdk15on</artifactId>
 			<version>1.70</version>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.lecturestudio.stylus</groupId>
+			<artifactId>stylus</artifactId>
+			<version>${stylus.version}</version>
 		</dependency>
 	</dependencies>
 </project>

@@ -18,7 +18,24 @@
 
 package org.lecturestudio.presenter.api.presenter;
 
-import static java.util.Objects.*;
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+import static java.util.Objects.requireNonNull;
+
+import javax.inject.Inject;
+
+import java.awt.Dimension;
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
 
 import com.google.common.eventbus.Subscribe;
 
@@ -40,7 +57,9 @@ import org.lecturestudio.core.geometry.Matrix;
 import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.graphics.Color;
 import org.lecturestudio.core.input.KeyEvent;
-import org.lecturestudio.core.model.*;
+import org.lecturestudio.core.model.Document;
+import org.lecturestudio.core.model.DocumentOutlineItem;
+import org.lecturestudio.core.model.Page;
 import org.lecturestudio.core.model.listener.DocumentChangeListener;
 import org.lecturestudio.core.model.listener.PageEditedListener;
 import org.lecturestudio.core.model.listener.ParameterChangeListener;
@@ -50,30 +69,57 @@ import org.lecturestudio.core.model.shape.TextShape;
 import org.lecturestudio.core.presenter.Presenter;
 import org.lecturestudio.core.recording.DocumentRecorder;
 import org.lecturestudio.core.service.DocumentService;
+import org.lecturestudio.core.stylus.StylusHandler;
 import org.lecturestudio.core.text.Font;
 import org.lecturestudio.core.tool.ToolType;
 import org.lecturestudio.core.util.ListChangeListener;
 import org.lecturestudio.core.util.ObservableList;
-import org.lecturestudio.core.view.*;
+import org.lecturestudio.core.view.Action;
+import org.lecturestudio.core.view.PageObjectRegistry;
+import org.lecturestudio.core.view.PageObjectView;
+import org.lecturestudio.core.view.PresentationParameter;
+import org.lecturestudio.core.view.PresentationParameterProvider;
+import org.lecturestudio.core.view.PresentationViewContext;
+import org.lecturestudio.core.view.Screen;
+import org.lecturestudio.core.view.SlidePresentationViewContext;
+import org.lecturestudio.core.view.SlideViewAddressOverlay;
+import org.lecturestudio.core.view.TeXBoxView;
+import org.lecturestudio.core.view.TextBoxView;
+import org.lecturestudio.core.view.ViewContextFactory;
+import org.lecturestudio.core.view.ViewType;
 import org.lecturestudio.presenter.api.config.DocumentTemplateConfiguration;
 import org.lecturestudio.presenter.api.config.ExternalWindowConfiguration;
 import org.lecturestudio.presenter.api.config.PresenterConfiguration;
 import org.lecturestudio.presenter.api.context.PresenterContext;
-import org.lecturestudio.presenter.api.event.*;
+import org.lecturestudio.presenter.api.event.ExternalMessagesViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalNotesViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalParticipantsViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalSlidePreviewViewEvent;
+import org.lecturestudio.presenter.api.event.ExternalSpeechViewEvent;
+import org.lecturestudio.presenter.api.event.MessageBarPositionEvent;
+import org.lecturestudio.presenter.api.event.MessengerStateEvent;
+import org.lecturestudio.presenter.api.event.NotesBarPositionEvent;
+import org.lecturestudio.presenter.api.event.ParticipantsPositionEvent;
+import org.lecturestudio.presenter.api.event.PreviewPositionEvent;
+import org.lecturestudio.presenter.api.event.QuizStateEvent;
+import org.lecturestudio.presenter.api.event.RecordingStateEvent;
+import org.lecturestudio.presenter.api.event.ScreenShareEndEvent;
+import org.lecturestudio.presenter.api.event.ScreenShareStateEvent;
+import org.lecturestudio.presenter.api.event.StreamReconnectStateEvent;
+import org.lecturestudio.presenter.api.event.StreamingStateEvent;
 import org.lecturestudio.presenter.api.input.Shortcut;
 import org.lecturestudio.presenter.api.model.MessageBarPosition;
 import org.lecturestudio.presenter.api.model.MessageDocument;
+import org.lecturestudio.presenter.api.model.NoteBarPosition;
 import org.lecturestudio.presenter.api.service.RecordingService;
 import org.lecturestudio.presenter.api.service.WebRtcStreamService;
 import org.lecturestudio.presenter.api.service.WebService;
 import org.lecturestudio.presenter.api.service.WebServiceInfo;
-import org.lecturestudio.presenter.api.stylus.StylusHandler;
-import org.lecturestudio.presenter.api.view.PageObjectRegistry;
 import org.lecturestudio.presenter.api.view.SlidesView;
 import org.lecturestudio.swing.model.ExternalWindowPosition;
+import org.lecturestudio.web.api.event.LocalScreenVideoFrameEvent;
 import org.lecturestudio.web.api.event.PeerStateEvent;
 import org.lecturestudio.web.api.event.RemoteVideoFrameEvent;
-import org.lecturestudio.web.api.event.LocalScreenVideoFrameEvent;
 import org.lecturestudio.web.api.message.CoursePresenceMessage;
 import org.lecturestudio.web.api.message.MessengerMessage;
 import org.lecturestudio.web.api.message.SpeechBaseMessage;
@@ -83,25 +129,9 @@ import org.lecturestudio.web.api.model.Message;
 import org.lecturestudio.web.api.model.ScreenSource;
 import org.lecturestudio.web.api.service.ServiceParameters;
 import org.lecturestudio.web.api.stream.ScreenPresentationViewContext;
-import org.lecturestudio.core.view.SlidePresentationViewContext;
 import org.lecturestudio.web.api.stream.model.CourseParticipant;
 import org.lecturestudio.web.api.stream.model.CoursePresence;
-import org.lecturestudio.web.api.stream.model.CoursePresenceType;
 import org.lecturestudio.web.api.stream.service.StreamProviderService;
-
-import javax.inject.Inject;
-import java.awt.*;
-import java.io.File;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 
 public class SlidesPresenter extends Presenter<SlidesView> {
 
@@ -262,6 +292,14 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	}
 
 	@Subscribe
+	public void onEvent(final StreamReconnectStateEvent event) {
+		if (event.stopped()) {
+			// Update state on successful reconnection.
+			loadParticipants();
+		}
+	}
+
+	@Subscribe
 	public void onEvent(final ScreenShareStateEvent event) {
 		PresenterContext ctx = (PresenterContext) context;
 		PresentationViewContext viewContext = null;
@@ -341,25 +379,22 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	public void onEvent(CoursePresenceMessage message) {
 		PresenterContext presenterContext = (PresenterContext) context;
 
-		if (CoursePresence.isConnected(message.getCoursePresence())) {
-			if (CoursePresenceType.isStream(message.getCoursePresenceType())) {
-				presenterContext.setAttendeesCount(presenterContext.getAttendeesCount() + 1);
-			}
+		var participant = new CourseParticipant(message.getUserId(),
+				message.getFirstName(), message.getFamilyName(),
+				message.getCoursePresenceType(),
+				message.getCourseParticipantType());
 
-			view.addParticipant(new CourseParticipant(message.getUserId(),
-					message.getFirstName(), message.getFamilyName(),
-					message.getCoursePresenceType(),
-					message.getCourseParticipantType()));
+		if (CoursePresence.isConnected(message.getCoursePresence())) {
+			presenterContext.getCourseParticipants().removeIf(
+					p -> p.getUserId().equals(participant.getUserId()));
+			presenterContext.getCourseParticipants().add(participant);
+
+			view.addParticipant(participant);
 		}
 		else {
-			if (CoursePresenceType.isStream(message.getCoursePresenceType())) {
-				presenterContext.setAttendeesCount(presenterContext.getAttendeesCount() - 1);
-			}
+			presenterContext.getCourseParticipants().remove(participant);
 
-			view.removeParticipant(new CourseParticipant(message.getUserId(),
-					message.getFirstName(), message.getFamilyName(),
-					message.getCoursePresenceType(),
-					message.getCourseParticipantType()));
+			view.removeParticipant(participant);
 		}
 	}
 
@@ -439,8 +474,23 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	}
 
 	@Subscribe
+	public void onEvent(ExternalNotesViewEvent event) {
+		if (event.isEnabled()) {
+			if (event.isShow()) {
+				viewShowExternalNotes(event.isPersistent());
+			}
+			else {
+				view.hideExternalNotes();
+			}
+		}
+		else {
+			viewHideExternalNotes(event.isPersistent());
+		}
+	}
+
+	@Subscribe
 	public void onEvent(MessageBarPositionEvent event) {
-		final MessageBarPosition position = event.getPosition();
+		final MessageBarPosition position = event.getMessageBarPosition();
 
 		view.setMessageBarPosition(position);
 
@@ -449,7 +499,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 	@Subscribe
 	public void onEvent(ParticipantsPositionEvent event) {
-		final MessageBarPosition position = event.getPosition();
+		final MessageBarPosition position = event.getMessageBarPosition();
 
 		view.setParticipantsPosition(position);
 
@@ -458,9 +508,18 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 	@Subscribe
 	public void onEvent(PreviewPositionEvent event) {
-		final MessageBarPosition position = event.getPosition();
+		final MessageBarPosition position = event.getMessageBarPosition();
 
 		view.setPreviewPosition(position);
+	}
+
+	@Subscribe
+	public void onEvent(NotesBarPositionEvent event) {
+		final NoteBarPosition position = event.getNoteBarPosition();
+
+		view.setNotesBarPosition(position);
+
+		getPresenterConfig().getSlideViewConfiguration().setNotesBarPosition(position);
 	}
 
 	@Subscribe
@@ -539,6 +598,21 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 	private void externalSpeechClosed() {
 		eventBus.post(new ExternalSpeechViewEvent(false));
+	}
+
+	private void externalNotesPositionChanged(ExternalWindowPosition position) {
+		final ExternalWindowConfiguration config = getExternalNotesConfig();
+
+		config.setPosition(position.getPosition());
+		config.setScreen(position.getScreen());
+	}
+
+	private void externalNotesSizeChanged(Dimension size) {
+		getExternalNotesConfig().setSize(size);
+	}
+
+	private void externalNotesClosed() {
+		eventBus.post(new ExternalNotesViewEvent(false));
 	}
 
 	private void keyEvent(KeyEvent event) {
@@ -642,9 +716,8 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		Page page = view.getPage();
 		page.removeShape(shape);
 
-		if (shape instanceof TextShape) {
+		if (shape instanceof TextShape textShape) {
 			// TODO: make this generic or remove at all
-			TextShape textShape = (TextShape) shape;
 			textShape.setOnRemove();
 		}
 
@@ -861,6 +934,11 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		view.removeAllPageObjectViews();
 		view.setPage(page, parameter);
 
+		view.clearNotesViewContainer();
+		//A page can have multiple notes
+		for(String note : page.getNotes()){
+			view.setNotesText(note);
+		}
 		loadPageObjectViews(page);
 
 		recordPage(page);
@@ -950,6 +1028,10 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		return getPresenterConfig().getExternalSpeechConfig();
 	}
 
+	private ExternalWindowConfiguration getExternalNotesConfig() {
+		return getPresenterConfig().getExternalNotesConfig();
+	}
+
 	@Override
 	public void initialize() {
 		stylusHandler = new StylusHandler(toolController, () -> {
@@ -1033,6 +1115,12 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 			view.setExtendedFullscreen(newValue);
 		});
 
+//		config.useMouseInputProperty().addListener((o, oldValue, newValue) -> {
+//			setUseMouse(newValue);
+//		});
+
+		setUseMouse(config.getUseMouseInput());
+
 		view.setOnExternalMessagesPositionChanged(this::externalMessagesPositionChanged);
 		view.setOnExternalMessagesSizeChanged(this::externalMessagesSizeChanged);
 		view.setOnExternalMessagesClosed(this::externalMessagesClosed);
@@ -1057,8 +1145,13 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		initExternalScreenBehavior(getExternalSpeechConfig(),
 				(enabled, show) -> eventBus.post(new ExternalSpeechViewEvent(enabled, show)));
 
+		view.setOnExternalNotesPositionChanged(this::externalNotesPositionChanged);
+		view.setOnExternalNotesSizeChanged(this::externalNotesSizeChanged);
+		view.setOnExternalNotesClosed(this::externalNotesClosed);
+		initExternalScreenBehavior(getExternalNotesConfig(),
+				(enabled, show) -> eventBus.post(new ExternalNotesViewEvent(enabled, show)));
+
 		view.setPageRenderer(renderController);
-		view.setStylusHandler(stylusHandler);
 		view.setExtendedFullscreen(config.getExtendedFullscreen());
 		view.setMessengerState(ExecutableState.Stopped);
 
@@ -1102,6 +1195,9 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		view.setMessageBarPosition(getPresenterConfig()
 				.getSlideViewConfiguration().getMessageBarPosition());
 
+		view.setNotesBarPosition(getPresenterConfig()
+				.getSlideViewConfiguration().getNotesBarPosition());
+
 		view.setParticipantsPosition(getPresenterConfig()
 				.getSlideViewConfiguration().getParticipantsPosition());
 
@@ -1116,6 +1212,15 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		}
 		catch (ExecutableException e) {
 			throw new RuntimeException(e);
+		}
+	}
+
+	private void setUseMouse(boolean useMouse) {
+		if (useMouse) {
+			view.createMouseInput(toolController);
+		}
+		else {
+			view.createStylusInput(stylusHandler);
 		}
 	}
 
@@ -1143,6 +1248,8 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 				(enabled, show) -> eventBus.post(new ExternalSlidePreviewViewEvent(enabled, show)));
 		showExternalScreen(getExternalSpeechConfig(),
 				(enabled, show) -> eventBus.post(new ExternalSpeechViewEvent(enabled, show)));
+		showExternalScreen(getExternalNotesConfig(),
+				(enabled, show) -> eventBus.post(new ExternalNotesViewEvent(enabled, show)));
 	}
 
 	private void showExternalScreen(ExternalWindowConfiguration config, BiConsumer<Boolean, Boolean> action) {
@@ -1249,6 +1356,30 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		view.hideExternalSpeech();
 	}
 
+	private void viewShowExternalNotes(boolean persistent) {
+		final ExternalWindowConfiguration config = getExternalNotesConfig();
+
+		if (persistent) {
+			config.setEnabled(true);
+		}
+
+		view.showExternalNotes(config.getScreen(), config.getPosition(), config.getSize());
+	}
+
+	private void viewHideExternalNotes(boolean persistent) {
+		final ExternalWindowConfiguration config = getExternalNotesConfig();
+
+		if (persistent) {
+			config.setEnabled(false);
+			config.setScreen(null);
+			config.setPosition(null);
+			config.setSize(null);
+		}
+
+		view.hideExternalNotes();
+	}
+
+
 	private boolean checkIfScreenInList(List<Screen> screens, Screen screen) {
 		if (screen == null) {
 			return true;
@@ -1312,7 +1443,11 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		StreamProviderService spService = new StreamProviderService(parameters,
 				config.getStreamConfig()::getAccessToken);
 
-		view.addParticipants(spService.getParticipants(courseId));
+		List<CourseParticipant> participants = spService.getParticipants(courseId);
+
+		ctx.getCourseParticipants().addAll(participants);
+
+		view.setParticipants(participants);
 	}
 
 
