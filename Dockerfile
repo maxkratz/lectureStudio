@@ -1,4 +1,4 @@
-FROM adoptopenjdk/openjdk14:debian
+FROM eclipse-temurin:17-jdk
 LABEL maintainer="Maximilian Kratz <account@maxkratz.com>"
 
 # Update package of base system
