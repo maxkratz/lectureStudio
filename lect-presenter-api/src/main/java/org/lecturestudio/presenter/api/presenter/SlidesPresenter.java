@@ -184,6 +184,8 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 
 	private SelectionIdleTimer idleTimer;
 
+	private final UserPrivilegeService userPrivilegeService;
+
 
 	@Inject
 	SlidesPresenter(ApplicationContext context, SlidesView view,
@@ -197,7 +199,8 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 					RecordingService recordingService,
 					WebService webService,
 					WebServiceInfo webServiceInfo,
-					WebRtcStreamService streamService) {
+					WebRtcStreamService streamService,
+					UserPrivilegeService userPrivilegeService) {
 		super(context, view);
 
 		this.viewFactory = viewFactory;
@@ -216,6 +219,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		this.pageObjectRegistry = new PageObjectRegistry();
 		this.documentChangeListener = new DocumentChangeHandler();
 		this.screenViewContext = new ScreenPresentationViewContext();
+		this.userPrivilegeService = userPrivilegeService;
 	}
 
 	@Subscribe
@@ -695,7 +699,15 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	}
 
 	private void onBan(CourseParticipant user) {
-		streamService.ban(user);
+		if (isNull(user)) {
+			return;
+		}
+		if (user.getUserId().equals(userPrivilegeService.getUserInfo().getUserId())) {
+			return;
+		}
+		if (userPrivilegeService.hasPrivilege("PARTICIPANTS_BAN")){
+			streamService.ban(user);
+		}
 	}
 
 	private void onDiscardMessage(MessengerMessage message) {
@@ -1031,9 +1043,9 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		close();
 	}
 
-	private void timerStart() {
+	private void timerStartToggle() {
 		PresenterContext pContext = (PresenterContext) context;
-		pContext.getStopwatch().startStopwatch();
+		pContext.getStopwatch().startStopStopwatch();
 	}
 
 	private void timerPause() {
@@ -1403,7 +1415,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		registerShortcut(Shortcut.BOOKMARK_SLIDE, this::bookmarkSlide);
 		registerShortcut(Shortcut.BOOKMARK_GOTO_LAST, this::bookmarkGotoLastSlide);
 
-		registerShortcut(Shortcut.TIMER_START, this::timerStart);
+		registerShortcut(Shortcut.TIMER_START, this::timerStartToggle);
 		registerShortcut(Shortcut.TIMER_PAUSE, this::timerPause);
 		registerShortcut(Shortcut.TIMER_RESET, this::timerReset);
 
