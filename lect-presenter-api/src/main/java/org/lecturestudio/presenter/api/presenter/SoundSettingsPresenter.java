@@ -25,6 +25,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 
 import javax.inject.Inject;
 
@@ -32,10 +33,8 @@ import org.lecturestudio.core.Executable;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.app.configuration.AudioConfiguration;
-import org.lecturestudio.core.audio.AudioFormat;
-import org.lecturestudio.core.audio.AudioProcessingSettings;
+import org.lecturestudio.core.audio.*;
 import org.lecturestudio.core.audio.AudioProcessingSettings.NoiseSuppressionLevel;
-import org.lecturestudio.core.audio.AudioSystemProvider;
 import org.lecturestudio.core.audio.bus.event.AudioSignalEvent;
 import org.lecturestudio.core.audio.device.AudioDevice;
 import org.lecturestudio.core.audio.sink.AudioSink;
@@ -48,8 +47,6 @@ import org.lecturestudio.core.io.RandomAccessAudioStream;
 import org.lecturestudio.core.presenter.Presenter;
 import org.lecturestudio.core.util.MapChangeListener;
 import org.lecturestudio.core.util.ObservableMap;
-import org.lecturestudio.core.audio.AudioPlayer;
-import org.lecturestudio.core.audio.AudioRecorder;
 import org.lecturestudio.presenter.api.config.DefaultConfiguration;
 import org.lecturestudio.presenter.api.presenter.command.AdjustAudioCaptureLevelCommand;
 import org.lecturestudio.presenter.api.view.SoundSettingsView;
@@ -59,6 +56,8 @@ public class SoundSettingsPresenter extends Presenter<SoundSettingsView> {
 	private final AudioConfiguration audioConfig;
 
 	private final AudioSystemProvider audioSystemProvider;
+
+	private AudioDeviceChangeListener deviceChangeListener;
 
 	private AudioPlayer micTestAudioPlayer;
 
@@ -99,6 +98,21 @@ public class SoundSettingsPresenter extends Presenter<SoundSettingsView> {
 		testSpeaker = new BooleanProperty();
 		captureEnabled = new BooleanProperty(true);
 		playbackEnabled = new BooleanProperty();
+
+		deviceChangeListener = new AudioDeviceChangeListener() {
+
+			@Override
+			public void deviceConnected(AudioDevice device) {
+				loadDevices();
+			}
+
+			@Override
+			public void deviceDisconnected(AudioDevice device) {
+				loadDevices();
+			}
+		};
+
+		audioSystemProvider.addDeviceChangeListener(deviceChangeListener);
 
 		testCapture.addListener((o, oldValue, newValue) -> {
 			recordCaptureTest(newValue);
@@ -221,6 +235,22 @@ public class SoundSettingsPresenter extends Presenter<SoundSettingsView> {
 			if (captureAudio && nonNull(speakerTestAudioPlayer)) {
 				speakerTestAudioPlayer.setAudioVolume(newValue);
 			}
+		});
+	}
+
+	@Override
+	public void close() {
+		//audioSystemProvider.removeDeviceChangeListener(deviceChangeListener);
+
+		super.close();
+	}
+
+	private void loadDevices() {
+		CompletableFuture.runAsync(() -> {
+			view.setAudioCaptureDevices(audioSystemProvider.getRecordingDevices());
+			view.setAudioPlaybackDevices(audioSystemProvider.getPlaybackDevices());
+			view.setAudioCaptureDevice(audioConfig.captureDeviceNameProperty());
+			view.setAudioPlaybackDevice(audioConfig.playbackDeviceNameProperty());
 		});
 	}
 

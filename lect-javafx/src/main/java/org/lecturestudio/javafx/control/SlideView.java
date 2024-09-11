@@ -47,6 +47,7 @@ import javafx.scene.control.Skin;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.transform.Affine;
 
+import org.bytedeco.javacv.Frame;
 import org.lecturestudio.core.beans.BooleanProperty;
 import org.lecturestudio.core.controller.RenderController;
 import org.lecturestudio.core.geometry.Rectangle2D;
@@ -297,18 +298,19 @@ public class SlideView extends Control implements ParameterChangeListener, org.l
 		updateViewTransform();
 	}
 
-	public synchronized void repaint() {
-		if (seekProperty.get()) {
-			return;
-		}
+	public synchronized void paintFrame(Frame frame) {
+		SlideViewSkin skin = (SlideViewSkin) getSkin();
+		skin.paintFrame(frame);
+	}
 
+	public synchronized void repaint() {
 		SlideViewSkin skin = (SlideViewSkin) getSkin();
 		skin.repaint();
 	}
 
 	/**
 	 * @return The CssMetaData associated with this class, which may include the
-	 * 		CssMetaData of its super classes.
+	 * 		CssMetaData of its superclasses.
 	 */
 	public static List<CssMetaData<? extends Styleable, ?>> getClassCssMetaData() {
 		return StyleableProperties.STYLEABLES;
@@ -321,7 +323,7 @@ public class SlideView extends Control implements ParameterChangeListener, org.l
 	public List<CssMetaData<? extends Styleable, ?>> getControlCssMetaData() {
 		return getClassCssMetaData();
 	}
-	
+
 	@Override
 	protected Skin<?> createDefaultSkin() {
 		return new SlideViewSkin(this, canvasBounds);

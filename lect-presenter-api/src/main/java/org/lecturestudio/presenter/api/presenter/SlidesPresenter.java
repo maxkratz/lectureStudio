@@ -58,6 +58,7 @@ import org.lecturestudio.core.geometry.Matrix;
 import org.lecturestudio.core.geometry.Rectangle2D;
 import org.lecturestudio.core.graphics.Color;
 import org.lecturestudio.core.input.KeyEvent;
+import org.lecturestudio.core.input.ScrollHandler;
 import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.DocumentOutlineItem;
 import org.lecturestudio.core.model.Page;
@@ -1265,7 +1266,7 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 	@Override
 	public void initialize() {
 		stylusHandler = new StylusHandler(toolController, () -> {
-			// Cancel page selection task.
+			// Cancel a page selection task.
 			if (nonNull(idleTimer)) {
 				idleTimer.stop();
 				idleTimer = null;
@@ -1348,6 +1349,8 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 //		config.useMouseInputProperty().addListener((o, oldValue, newValue) -> {
 //			setUseMouse(newValue);
 //		});
+
+		view.setScrollHandler(this::onScrollEvent);
 
 		setUseMouse(config.getUseMouseInput());
 
@@ -1478,6 +1481,15 @@ public class SlidesPresenter extends Presenter<SlidesView> {
 		}
 		else {
 			view.createStylusInput(stylusHandler);
+		}
+	}
+
+	private void onScrollEvent(ScrollHandler.ScrollEvent e) {
+		if (e.deltaY() < 0) {
+			previousPage();
+		}
+		else {
+			nextPage();
 		}
 	}
 

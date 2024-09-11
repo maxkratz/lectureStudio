@@ -18,6 +18,7 @@
 
 package org.lecturestudio.editor.api.video;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 import com.google.common.eventbus.Subscribe;
@@ -30,6 +31,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.BiConsumer;
 
+import org.bytedeco.javacv.Frame;
+
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.ExecutableState;
 import org.lecturestudio.core.bus.EventBus;
@@ -39,19 +42,27 @@ import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.Time;
 import org.lecturestudio.core.recording.EventExecutor;
 import org.lecturestudio.core.recording.RecordedPage;
+import org.lecturestudio.core.recording.action.ActionType;
 import org.lecturestudio.core.recording.action.NextPageAction;
 import org.lecturestudio.core.recording.action.PlaybackAction;
+import org.lecturestudio.core.recording.action.ScreenAction;
 import org.lecturestudio.editor.api.recording.RecordingRenderProgressEvent;
+import org.lecturestudio.media.video.BufferedImageFrameConverter;
+import org.lecturestudio.media.video.VideoPlayer;
 
 public class VideoEventExecutor extends EventExecutor {
 
 	private final VideoRendererView renderView;
+
+	private final VideoPlayer videoPlayer;
 
 	private final ToolController toolController;
 
 	private final EventBus eventBus;
 
 	private final Stack<PlaybackAction> playbacks;
+
+	private BufferedImageFrameConverter frameConverter;
 
 	private Document document;
 
@@ -60,6 +71,8 @@ public class VideoEventExecutor extends EventExecutor {
 	private RecordingRenderProgressEvent progressEvent;
 
 	private BiConsumer<BufferedImage, RecordingRenderProgressEvent> frameConsumer;
+
+	private Frame frame;
 
 	private int pageNumber;
 
@@ -72,8 +85,10 @@ public class VideoEventExecutor extends EventExecutor {
 	private long frames;
 
 
-	public VideoEventExecutor(VideoRendererView renderView, ToolController toolController, EventBus eventBus) {
+	public VideoEventExecutor(VideoRendererView renderView, VideoPlayer videoPlayer, ToolController toolController,
+							  EventBus eventBus) {
 		this.renderView = renderView;
+		this.videoPlayer = videoPlayer;
 		this.toolController = toolController;
 		this.eventBus = eventBus;
 		this.playbacks = new Stack<>();
@@ -136,6 +151,9 @@ public class VideoEventExecutor extends EventExecutor {
 
 		toolController.init();
 
+		frameConverter = new BufferedImageFrameConverter();
+		frameConverter.setImageSize(renderView.getImageSize());
+
 		progressEvent = new RecordingRenderProgressEvent();
 		progressEvent.setCurrentTime(new Time(0));
 		progressEvent.setTotalTime(new Time(duration));
@@ -147,7 +165,7 @@ public class VideoEventExecutor extends EventExecutor {
 		toolController.start();
 
 		ExecutableState state = getPreviousState();
-		
+
 		if (state == ExecutableState.Initialized || state == ExecutableState.Stopped) {
 			eventBus.register(this);
 
@@ -175,6 +193,8 @@ public class VideoEventExecutor extends EventExecutor {
 	@Override
 	protected void destroyInternal() throws ExecutableException {
 		toolController.destroy();
+
+		frameConverter.dispose();
 	}
 
 	@Override
@@ -191,7 +211,7 @@ public class VideoEventExecutor extends EventExecutor {
 					// Execute all events for the current time period.
 					while (true) {
 						if (!playbacks.isEmpty()) {
-							// Get next action for execution.
+							// Get the next action for execution.
 							PlaybackAction action = playbacks.peek();
 
 							if (startTime < action.getTimestamp()) {
@@ -202,6 +222,10 @@ public class VideoEventExecutor extends EventExecutor {
 
 							// Remove executed action.
 							playbacks.pop();
+
+							if (action.getType() == ActionType.SCREEN) {
+								initVideoPlayer((ScreenAction) action);
+							}
 						}
 						else if (pageNumber < recordedPages.size() - 1) {
 							// Get actions for the next page.
@@ -246,10 +270,57 @@ public class VideoEventExecutor extends EventExecutor {
 			progressEvent.getCurrentTime().setMillis(timestamp);
 			progressEvent.setPageNumber(document.getCurrentPageNumber() + 1);
 
-			frameConsumer.accept(renderView.renderCurrentFrame(), progressEvent);
+			if (videoPlayer.initialized()) {
+				// If we are in a video section, read and render video frames from the corresponding video file.
+				try {
+					renderVideoFrame(timestamp);
+				}
+				catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			}
+			else {
+				// Generate slide frame from the current action and document state.
+				frameConsumer.accept(renderView.renderCurrentFrame(), progressEvent);
+			}
 		}
 
 		frames++;
+	}
+
+	private boolean consumeFrame(Frame frame, long timestamp) throws Exception {
+		// Use a window of half the framerate to be more in sync.
+		double frameTsMargin = Math.round(1000 / videoPlayer.getFrameRate() / 2);
+		long frameTs = videoPlayer.calculateTimestamp(frame.timestamp);
+		if (frameTs >= timestamp - frameTsMargin) {
+			renderView.renderFrameImage(frameConverter.convert(frame));
+			frameConsumer.accept(renderView.renderCurrentFrame(), progressEvent);
+			return true;
+		}
+		return false;
+	}
+
+	private void renderVideoFrame(long timestamp) throws Exception {
+		if (nonNull(frame)) {
+			if (consumeFrame(frame, timestamp)) {
+				// Frame has been repeated due to the low video frame rate.
+				return;
+			}
+		}
+
+		// Get the video frame with the desired timestamp, otherwise skip over.
+		while ((frame = videoPlayer.readVideoFrame()) != null) {
+			if (consumeFrame(frame, timestamp)) {
+				// Found frame with a suitable timestamp.
+				break;
+			}
+		}
+
+		if (isNull(frame)) {
+			// Reached the end of the video.
+			//videoPlayer.stop();
+			videoPlayer.destroy();
+		}
 	}
 
 	private void getPlaybackActions(int pageNumber) {
@@ -271,5 +342,18 @@ public class VideoEventExecutor extends EventExecutor {
 		}
 
 		this.pageNumber = pageNumber;
+	}
+
+	private void initVideoPlayer(ScreenAction action) throws ExecutableException {
+		if (videoPlayer.started()) {
+			videoPlayer.stop();
+			videoPlayer.destroy();
+		}
+
+		videoPlayer.setVideoFile(action.getFileName());
+		videoPlayer.setVideoOffset(action.getVideoOffset());
+		videoPlayer.setVideoLength(action.getVideoLength());
+		videoPlayer.setReferenceTimestamp(getElapsedTime());
+		videoPlayer.init();
 	}
 }

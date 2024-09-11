@@ -29,6 +29,7 @@ import org.lecturestudio.core.controller.RenderController;
 import org.lecturestudio.core.controller.ToolController;
 import org.lecturestudio.core.geometry.Matrix;
 import org.lecturestudio.core.input.KeyEvent;
+import org.lecturestudio.core.input.ScrollHandler;
 import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.DocumentOutline;
 import org.lecturestudio.core.model.DocumentOutlineItem;
@@ -81,6 +82,8 @@ public interface SlidesView extends View {
 	void bindShowOutline(BooleanProperty showProperty);
 
 	void setExtendedFullscreen(boolean extended);
+
+	void setScrollHandler(ScrollHandler handler);
 
 	void createStylusInput(StylusHandler handler);
 

@@ -18,11 +18,7 @@
 
 package org.lecturestudio.swing.components;
 
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
+import java.awt.*;
 import java.util.Objects;
 
 import javax.swing.JButton;
@@ -51,11 +47,23 @@ public class DocButton extends JButton {
 
 		Font font = getFont();
 		Graphics2D g2d = (Graphics2D) g;
+		FontMetrics metrics = g2d.getFontMetrics(font);
+
+		String name = recentDocument.getDocumentName();
+		String path = recentDocument.getDocumentPath();
+
+		float x = 15;
+		float y = 10;
+		float yNamePadding = y + font.deriveFont(Font.BOLD).getSize2D();
+		float yPathPadding = (getHeight() - font.getSize2D());
+		float width = getWidth() - 2 * x;
+		int maxChars = (int) (width / metrics.stringWidth(path) * path.length());
+
 		g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
 		g2d.setPaint(Color.BLACK);
 		g2d.setFont(font.deriveFont(Font.BOLD));
-		g2d.drawString(recentDocument.getDocumentName(), 15, 20);
+		g2d.drawString(name, x, yNamePadding);
 		g2d.setFont(font.deriveFont(Font.PLAIN));
-		g2d.drawString(FileUtils.shortenPath(recentDocument.getDocumentPath(), 35), 15, 50 - 10);
+		g2d.drawString(FileUtils.shortenPath(path, maxChars), x, yPathPadding);
 	}
 }

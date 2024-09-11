@@ -20,11 +20,13 @@ package org.lecturestudio.editor.api.view;
 
 import java.util.Collection;
 
+import org.bytedeco.javacv.Frame;
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.beans.BooleanProperty;
 import org.lecturestudio.core.controller.RenderController;
 import org.lecturestudio.core.geometry.Matrix;
 import org.lecturestudio.core.input.KeyEvent;
+import org.lecturestudio.core.input.ScrollHandler;
 import org.lecturestudio.core.model.Document;
 import org.lecturestudio.core.model.Page;
 import org.lecturestudio.core.model.shape.Shape;
@@ -42,6 +44,8 @@ public interface SlidesView extends View {
 
 	void selectDocument(Document doc);
 
+	void paintFrame(Frame frame);
+
 	void repaint();
 
 	Page getPage();
@@ -49,6 +53,8 @@ public interface SlidesView extends View {
 	void setPage(Page page, PresentationParameter parameter);
 
 	void setPageRenderer(RenderController pageRenderer);
+
+	void setScrollHandler(ScrollHandler scrollHandler);
 
 	void setOnKeyEvent(ConsumerAction<KeyEvent> action);
 

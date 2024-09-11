@@ -45,12 +45,10 @@ import javafx.geometry.Pos;
 import javafx.geometry.VPos;
 import javafx.scene.Node;
 import javafx.scene.control.SkinBase;
-import javafx.scene.image.ImageView;
-import javafx.scene.image.PixelBuffer;
-import javafx.scene.image.PixelFormat;
-import javafx.scene.image.WritableImage;
+import javafx.scene.image.*;
 import javafx.stage.Screen;
 
+import org.bytedeco.javacv.Frame;
 import org.lecturestudio.core.ExecutableException;
 import org.lecturestudio.core.PageMetrics;
 import org.lecturestudio.core.controller.RenderController;
@@ -114,6 +112,19 @@ public class SlideViewSkin extends SkinBase<SlideView> {
 		super(control);
 
 		initLayout(control, canvasBounds);
+	}
+
+	public void paintFrame(Frame frame) {
+		try {
+			renderer.renderFrame(frame);
+
+			Platform.runLater(() -> {
+				updateBuffer(null);
+			});
+		}
+		catch (Exception e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	public void repaint() {
@@ -425,9 +436,22 @@ public class SlideViewSkin extends SkinBase<SlideView> {
 
 		@Override
 		public void render() {
+			final Page page = getSkinnable().getPage();
+
+			if (isNull(page)) {
+				return;
+			}
+
+			final int width = (int) viewSize.getWidth();
+			final int height = (int) viewSize.getHeight();
+
+			if (width < 1 || height < 1) {
+				return;
+			}
+
 			setBounds(getSkinnable().getLayoutBounds());
 
-			renderer.renderPage(getSkinnable().getPage(), new Dimension((int) viewSize.getWidth(), (int) viewSize.getHeight()));
+			renderer.renderPage(page, new Dimension(width, height));
 
 			updateBuffer(null);
 		}

@@ -19,6 +19,7 @@
 package org.lecturestudio.core.recording;
 
 import org.lecturestudio.core.ExecutableBase;
+import org.lecturestudio.core.ExecutableException;
 
 public abstract class EventExecutor extends ExecutableBase {
 
@@ -26,9 +27,9 @@ public abstract class EventExecutor extends ExecutableBase {
 
 	public abstract int getPageNumber(int timeMillis);
 
-	public abstract int seekByTime(int timeMillis);
+	public abstract int seekByTime(int timeMillis) throws ExecutableException;
 
-	public abstract Integer seekByPage(int pageNumber);
+	public abstract Integer seekByPage(int pageNumber) throws ExecutableException;
 
 	protected abstract void executeEvents() throws Exception;
 

@@ -18,16 +18,18 @@
 
 package org.lecturestudio.presenter.api.view;
 
+import java.util.List;
+
 import org.lecturestudio.core.app.configuration.ScreenConfiguration;
 import org.lecturestudio.core.beans.BooleanProperty;
 import org.lecturestudio.core.beans.ObjectProperty;
 import org.lecturestudio.core.graphics.Color;
 
-import java.util.List;
-
 public interface DisplaySettingsView extends SettingsBaseView {
 
 	void setEnableDisplaysOnStart(BooleanProperty enable);
+
+	void setNotifyToActivate(BooleanProperty activate);
 
 	void setDisplayBackgroundColor(ObjectProperty<Color> color);
 

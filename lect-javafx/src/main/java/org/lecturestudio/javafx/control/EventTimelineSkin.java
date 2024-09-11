@@ -41,6 +41,7 @@ import org.lecturestudio.core.model.Time;
 import org.lecturestudio.core.recording.RecordedPage;
 import org.lecturestudio.core.recording.action.ActionType;
 import org.lecturestudio.core.recording.action.PlaybackAction;
+import org.lecturestudio.core.recording.action.ScreenAction;
 import org.lecturestudio.javafx.util.FxUtils;
 import org.lecturestudio.javafx.util.Slider;
 import org.lecturestudio.javafx.util.ThumbMouseHandler;
@@ -156,6 +157,7 @@ public class EventTimelineSkin extends MediaTrackControlSkinBase {
 			if (pageNumber != 0) {
 				PageSlider pageSlider = new PageSlider(pages, pageNumber, height);
 				ThumbMouseHandler mouseHandler = new ThumbMouseHandler(pageSlider, Orientation.HORIZONTAL);
+
 				pageSlider.setOnMouseDragged(mouseHandler);
 				pageSlider.setOnMousePressed(mouseHandler);
 				pageSlider.setOnMouseReleased(mouseHandler);
@@ -198,6 +200,15 @@ public class EventTimelineSkin extends MediaTrackControlSkinBase {
 
 					actionStartTime = null;
 				}
+				else if (actionType == ActionType.SCREEN) {
+					ScreenAction screenAction = (ScreenAction) action;
+					String styleClass = getMarkerStyleClass(actionType);
+					int timestamp = action.getTimestamp();
+					double beginningTime = timeToXPositionFunction.applyAsDouble(timestamp);
+					double endTime = timeToXPositionFunction.applyAsDouble(timestamp + screenAction.getVideoLength());
+
+					addMarker(beginningTime, endTime - beginningTime, height, styleClass);
+				}
 				else {
 					switch (actionType) {
 						case TEXT_SELECTION_EXT, RUBBER_EXT, DELETE_ALL, ZOOM_OUT -> {
@@ -227,6 +238,9 @@ public class EventTimelineSkin extends MediaTrackControlSkinBase {
 			case RUBBER_EXT, DELETE_ALL -> {
 				return "page-event-delete-marker";
 			}
+			case SCREEN -> {
+				return "page-event-screen-marker";
+			}
 			default -> {
 				return "page-event-marker";
 			}
@@ -245,11 +259,11 @@ public class EventTimelineSkin extends MediaTrackControlSkinBase {
 
 		PageSlider(List<RecordedPage> pages, int pageNumber, double maxHeight) {
 			super();
+
 			this.pages = pages;
 			this.pageNumber = pageNumber;
 
 			label = new Label(String.valueOf(pageNumber + 1));
-
 			label.getStyleClass().add("page-slider");
 
 			this.getChildren().addAll(label);
@@ -259,8 +273,8 @@ public class EventTimelineSkin extends MediaTrackControlSkinBase {
 			this.setLayoutY(snapPositionY(0));
 
 			label.setAlignment(Pos.CENTER);
-			label.setPrefWidth(label.getWidth() + 15);
-			label.setPrefHeight(Math.min(label.getHeight() + 10, maxHeight));
+			label.setPrefWidth(label.getWidth() + 18);
+			label.setPrefHeight(Math.min(label.getHeight() + 15, maxHeight));
 		}
 
 		@Override

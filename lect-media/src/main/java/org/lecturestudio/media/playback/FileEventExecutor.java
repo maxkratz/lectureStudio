@@ -18,8 +18,10 @@
 
 package org.lecturestudio.media.playback;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,29 +39,39 @@ import org.lecturestudio.core.audio.SyncState;
 import org.lecturestudio.core.controller.ToolController;
 import org.lecturestudio.core.recording.EventExecutor;
 import org.lecturestudio.core.recording.RecordedPage;
+import org.lecturestudio.core.recording.action.ActionType;
 import org.lecturestudio.core.recording.action.PageAction;
 import org.lecturestudio.core.recording.action.PlaybackAction;
+import org.lecturestudio.core.recording.action.ScreenAction;
+import org.lecturestudio.media.video.FFmpegFrameGrabber;
+import org.lecturestudio.media.video.VideoPlayer;
 
 public class FileEventExecutor extends EventExecutor {
 
 	private static final Logger LOG = LogManager.getLogger(FileEventExecutor.class);
 
+	private final SyncState syncState;
+
 	private final ToolController toolController;
 
 	private final List<RecordedPage> recordedPages;
+
+	private final VideoPlayer videoPlayer;
 
 	private Stack<PlaybackAction> playbacks;
 
 	private Map<Integer, Integer> pageChangeEvents;
 
-	private final SyncState syncState;
-
 	private EventThread thread;
 
+	private ScreenAction activeScreenAction;
 
-	public FileEventExecutor(ToolController toolController, List<RecordedPage> recordedPages, SyncState syncState) {
+
+	public FileEventExecutor(ToolController toolController, List<RecordedPage> recordedPages, VideoPlayer videoPlayer,
+							 SyncState syncState) {
 		this.toolController = toolController;
 		this.recordedPages = recordedPages;
+		this.videoPlayer = videoPlayer;
 		this.syncState = syncState;
 	}
 
@@ -74,7 +86,7 @@ public class FileEventExecutor extends EventExecutor {
 	}
 
 	@Override
-	public synchronized int seekByTime(int seekTime) {
+	public synchronized int seekByTime(int seekTime) throws ExecutableException {
 		int pageNumber = getTimeTablePage(seekTime);
 
 		seek(pageNumber, seekTime);
@@ -83,7 +95,7 @@ public class FileEventExecutor extends EventExecutor {
 	}
 
 	@Override
-	public synchronized Integer seekByPage(int pageNumber) {
+	public synchronized Integer seekByPage(int pageNumber) throws ExecutableException {
 		Integer timestamp = pageChangeEvents.get(pageNumber);
 
 		seek(pageNumber, timestamp);
@@ -92,19 +104,40 @@ public class FileEventExecutor extends EventExecutor {
 	}
 
 	@Override
-	protected void initInternal() {
+	protected void initInternal() throws ExecutableException {
 		playbacks = new Stack<>();
 		pageChangeEvents = new LinkedHashMap<>();
 
+		boolean videoLibLoaded = false;
+
 		for (RecordedPage recPage : recordedPages) {
 			pageChangeEvents.put(recPage.getNumber(), recPage.getTimestamp());
+
+			for (PlaybackAction action : recPage.getPlaybackActions()) {
+				if (action.getType() == ActionType.SCREEN) {
+					fixScreenAction((ScreenAction) action, recPage.getNumber());
+
+					if (!videoLibLoaded) {
+						// Load native libraries in advance to improve user experience when the first video is going to
+						// be played and therefore avoid ui lagging.
+						videoLibLoaded = true;
+
+                        try {
+                            FFmpegFrameGrabber.tryLoad();
+                        }
+						catch (FFmpegFrameGrabber.Exception e) {
+                            throw new ExecutableException(e);
+                        }
+                    }
+				}
+			}
 		}
 
 		getPlaybackActions(0);
 	}
 
 	@Override
-	protected void startInternal() {
+	protected void startInternal() throws ExecutableException {
 		ExecutableState state = getPreviousState();
 
 		if (state == ExecutableState.Initialized || state == ExecutableState.Stopped) {
@@ -125,19 +158,30 @@ public class FileEventExecutor extends EventExecutor {
 			});
 			thread.setName("EventExecutor-Thread");
 			thread.start();
+
+			startVideoPlayer();
 		}
 		else if (state == ExecutableState.Suspended) {
-			// Interrupt the Thread in case it was sleeping in order to play new annotations again
+			// Interrupt the Thread in case it was sleeping to play new annotations again.
 			if (thread.getState() == Thread.State.TIMED_WAITING) {
 				thread.interrupt();
 			}
 			thread.signal();
+
+			startVideoPlayer();
 		}
 	}
 
 	@Override
-	protected void stopInternal() {
+	protected void suspendInternal() throws ExecutableException {
+		suspendVideoPlayer();
+	}
+
+	@Override
+	protected void stopInternal() throws ExecutableException {
 		thread.shutdown();
+
+		disposeVideoPlayer();
 
 		getPlaybackActions(0);
 	}
@@ -163,7 +207,7 @@ public class FileEventExecutor extends EventExecutor {
 
 				synchronized (playbacks) {
 					if (!playbacks.isEmpty()) {
-						// Get next action for execution.
+						// Get the next action for execution.
 						PlaybackAction action = playbacks.peek();
 
 						if (time >= action.getTimestamp()) {
@@ -172,8 +216,13 @@ public class FileEventExecutor extends EventExecutor {
 							// Remove executed action.
 							playbacks.pop();
 
+							if (action.getType() == ActionType.SCREEN) {
+								initVideoPlayer((ScreenAction) action);
+								startVideoPlayer();
+							}
+
 							if (!playbacks.empty()) {
-								// Time to wait until next action.
+								// Time to wait until the next action.
 								PlaybackAction nextAction = playbacks.peek();
 								sleep = (nextAction.getTimestamp() - action.getTimestamp()) / 2;
 							}
@@ -214,7 +263,7 @@ public class FileEventExecutor extends EventExecutor {
 		}
 	}
 
-	private void seek(int pageNumber, int timeMillis) {
+	private void seek(int pageNumber, int timeMillis) throws ExecutableException {
 		RecordedPage recPage = recordedPages.get(pageNumber);
 
 		if (recPage.getNumber() == pageNumber) {
@@ -233,6 +282,29 @@ public class FileEventExecutor extends EventExecutor {
 					}
 
 					playbacks.pop();
+
+					if (action.getType() == ActionType.SCREEN) {
+						initVideoPlayer((ScreenAction) action);
+
+						if (videoPlayer.initialized() || videoPlayer.started() || videoPlayer.suspended()) {
+							// Get a video frame.
+							try {
+								videoPlayer.seekToVideoKeyFrame(timeMillis);
+							}
+							catch (Exception e) {
+								throw new RuntimeException(e);
+							}
+						}
+					}
+					else {
+						// Clear frames if this is not a video section at the current timestamp.
+						if (nonNull(activeScreenAction)
+								&& (activeScreenAction.getTimestamp() > timeMillis
+								|| activeScreenAction.getTimestamp() + activeScreenAction.getVideoLength() < timeMillis)) {
+							videoPlayer.clearFrames();
+							activeScreenAction = null;
+						}
+					}
 
 					syncState.setEventNumber(syncState.getEventNumber() + 1);
 				}
@@ -280,6 +352,69 @@ public class FileEventExecutor extends EventExecutor {
 		}
 
 		return page;
+	}
+
+	private void fixScreenAction(ScreenAction action, int pageNumber) {
+		// Fix overlapping screen actions into the next page.
+		RecordedPage recPage = recordedPages.get(pageNumber + 1);
+		if (nonNull(recPage) && (action.getTimestamp() + action.getVideoLength()) > recPage.getTimestamp()) {
+			action.setVideoLength(recPage.getTimestamp() - action.getTimestamp());
+		}
+	}
+
+	private void startVideoPlayer() throws ExecutableException {
+		if (isNull(activeScreenAction)) {
+			return;
+		}
+
+		final long time = getElapsedTime();
+
+		if (nonNull(activeScreenAction)
+				&& (activeScreenAction.getTimestamp() > time
+				|| activeScreenAction.getTimestamp() + activeScreenAction.getVideoLength() < time)) {
+			// Skip if this is not a video section at the current timestamp.
+			return;
+		}
+		if (videoPlayer.stopped() || videoPlayer.suspended() || videoPlayer.initialized()) {
+			videoPlayer.start();
+		}
+	}
+
+	private void suspendVideoPlayer() throws ExecutableException {
+		if (videoPlayer.started()) {
+			videoPlayer.suspend();
+		}
+	}
+
+	private void disposeVideoPlayer() throws ExecutableException {
+		if (videoPlayer.started() || videoPlayer.suspended()) {
+			videoPlayer.stop();
+		}
+		if (videoPlayer.initialized() || videoPlayer.stopped()) {
+			videoPlayer.destroy();
+		}
+	}
+
+	private void initVideoPlayer(ScreenAction action) throws ExecutableException {
+		activeScreenAction = action;
+
+		File videoFile = videoPlayer.getVideoFile();
+
+		if (nonNull(videoFile)
+				&& videoFile.getName().equals(action.getFileName())
+				&& action.getTimestamp() == videoPlayer.getReferenceTimestamp()) {
+			// Already initialized.
+			return;
+		}
+
+		disposeVideoPlayer();
+
+		videoPlayer.setVideoFile(action.getFileName());
+		videoPlayer.setVideoOffset(action.getVideoOffset());
+		videoPlayer.setVideoLength(action.getVideoLength());
+		videoPlayer.setReferenceTimestamp(action.getTimestamp());
+		videoPlayer.setSyncState(syncState);
+		videoPlayer.init();
 	}
 
 

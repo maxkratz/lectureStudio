@@ -37,8 +37,11 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.VBox;
 import javafx.scene.transform.TransformChangedEvent;
+
+import org.bytedeco.javacv.Frame;
 
 import org.lecturestudio.core.app.ApplicationContext;
 import org.lecturestudio.core.beans.BooleanProperty;
@@ -52,6 +55,7 @@ import org.lecturestudio.core.view.ConsumerAction;
 import org.lecturestudio.core.view.PageObjectView;
 import org.lecturestudio.core.view.PresentationParameter;
 import org.lecturestudio.core.view.ViewType;
+import org.lecturestudio.core.input.ScrollHandler;
 import org.lecturestudio.editor.api.view.SlidesView;
 import org.lecturestudio.javafx.beans.converter.KeyEventConverter;
 import org.lecturestudio.javafx.beans.converter.MatrixConverter;
@@ -70,6 +74,8 @@ public class FxSlidesView extends VBox implements SlidesView {
 	private final ChangeListener<Node> sceneFocusListener = (o, oldNode, newNode) -> {
 		onFocusChange(newNode);
 	};
+
+	private EventHandler<ScrollEvent> scrollEventHandler;
 
 	private ConsumerAction<org.lecturestudio.core.input.KeyEvent> keyAction;
 
@@ -136,6 +142,8 @@ public class FxSlidesView extends VBox implements SlidesView {
 			if (thumbPanel.getDocument().equals(doc)) {
 				FxUtils.invoke(() -> {
 					tabPane.getTabs().remove(tab);
+
+					slideView.setPage(null);
 				});
 				break;
 			}
@@ -150,7 +158,7 @@ public class FxSlidesView extends VBox implements SlidesView {
 
 			if (thumbPanel.getDocument().getName().equals(doc.getName())) {
 				FxUtils.invoke(() -> {
-					// Reload if document has changed.
+					// Reload if a document has changed.
 					if (!thumbPanel.getDocument().equals(doc)) {
 						// Prevent tab switching for quiz reloading.
 						thumbPanel.setDocument(doc, null);
@@ -161,6 +169,11 @@ public class FxSlidesView extends VBox implements SlidesView {
 				break;
 			}
 		}
+	}
+
+	@Override
+	public void paintFrame(Frame frame) {
+		slideView.paintFrame(frame);
 	}
 
 	@Override
@@ -194,6 +207,19 @@ public class FxSlidesView extends VBox implements SlidesView {
 		this.pageRenderer = pageRenderer;
 
 		slideView.setPageRenderer(pageRenderer);
+	}
+
+	@Override
+	public void setScrollHandler(ScrollHandler handler) {
+		if (nonNull(scrollEventHandler)) {
+			removeEventHandler(ScrollEvent.SCROLL, scrollEventHandler);
+		}
+
+		scrollEventHandler = event -> {
+			handler.onScrollEvent(new ScrollHandler.ScrollEvent(event.getX(), event.getY(), event.getDeltaX(), event.getDeltaY()));
+		};
+
+		addEventHandler(ScrollEvent.SCROLL, scrollEventHandler);
 	}
 
 	@Override
